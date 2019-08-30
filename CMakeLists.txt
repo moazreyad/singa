@@ -69,6 +69,8 @@ OPTION(DISABLE_WARNINGS "Disable warnings under windows" ON)
 OPTION(USE_MODULES "Compile dependent libs as submodules together with singa" OFF)
 OPTION(USE_MKLDNN "Use mkl-dnn libs" OFF)
 
+message(STATUS "ENABLE_TEST: ${ENABLE_TEST}")
+message(STATUS "ENABLE_TEST_COVERAGE: ${ENABLE_TEST_COVERAGE}")
 
 # TODO: remove all USE_CBLAS in codes
 SET(USE_CBLAS ON)
