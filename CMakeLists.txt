@@ -69,9 +69,6 @@ OPTION(DISABLE_WARNINGS "Disable warnings under windows" ON)
 OPTION(USE_MODULES "Compile dependent libs as submodules together with singa" OFF)
 OPTION(USE_MKLDNN "Use mkl-dnn libs" OFF)
 
-message(STATUS "ENABLE_TEST: ${ENABLE_TEST}")
-message(STATUS "ENABLE_TEST_COVERAGE: ${ENABLE_TEST_COVERAGE}")
-
 # TODO: remove all USE_CBLAS in codes
 SET(USE_CBLAS ON)
 
@@ -158,12 +155,30 @@ INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/include")
 ADD_SUBDIRECTORY(src)
 
 IF (ENABLE_TEST)
-  ADD_SUBDIRECTORY(test)
-  ADD_SUBDIRECTORY(examples)
-  IF (ENABLE_TEST_COVERAGE)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
-    SET(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} --coverage")
-  ENDIF()
+    ADD_SUBDIRECTORY(test)
+    ADD_SUBDIRECTORY(examples)
+  
+    # Code Coverage Configuration
+    add_library(coverage_config INTERFACE)
+
+    if(ENABLE_TEST_COVERAGE) # AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+    # Add required flags (GCC & LLVM/Clang)
+    target_compile_options(coverage_config INTERFACE
+        -O0        # no optimization
+        -g         # generate debug info
+        --coverage # sets all required flags
+    )
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.13)
+        target_link_options(coverage_config INTERFACE --coverage)
+    else()
+        target_link_libraries(coverage_config INTERFACE --coverage)
+    endif()
+    endif(CODE_COVERAGE)
+
+  # IF (ENABLE_TEST_COVERAGE)
+  #  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
+  #  SET(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} --coverage")
+  # ENDIF()
 ENDIF()
 
 IF (USE_PYTHON)
