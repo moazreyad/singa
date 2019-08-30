@@ -20,23 +20,23 @@ sudo: required
 matrix:
   include:
   - os: osx
-   language: cpp
-   compiler: clang
-   # system cblas will be used by cmake for other xcode versions
-   osx_image: xcode11
-   name: "macOS 10.14 (C++)" 
+    language: cpp
+    compiler: clang
+    # system cblas will be used by cmake for other xcode versions
+    osx_image: xcode11
+    name: "macOS 10.14 (C++)" 
   
   - os: linux
-   language: cpp
-   dist: trusty
-   compiler: gcc
-   name: "Ubuntu 14.04 (C++)" 
-   
+    language: cpp
+    dist: trusty
+    compiler: gcc
+    name: "Ubuntu 14.04 (C++)" 
+
   - os: linux
-   language: cpp
-   dist: xenial
-   compiler: gcc
-   name: "Ubuntu 16.04 (C++)" 
+    language: cpp
+    dist: xenial
+    compiler: gcc
+    name: "Ubuntu 16.04 (C++)" 
   
    - os: linux
     language: cpp
@@ -45,7 +45,7 @@ matrix:
     name: "Ubuntu 18.04 (C++)" 
     # install:
     #  - travis_wait bash -ex tool/travis/depends.sh
-      # for python only:
+    # for python only:
     #  - sudo pip install codecov coverage
 
 before_install:
