@@ -46,7 +46,9 @@ matrix:
       - sudo pip install codecov coverage
 
 before_install:
-  - export CMAKE_OPTIONS="$CMAKE_OPTIONS -DENABLE_TEST=YES -DENABLE_TEST_COVERAGE=YES"
+  - export CFLAGS="$CFLAGS --coverage"
+  - export CPPFLAGS="$CPPFLAGS --coverage"
+  # - export CMAKE_OPTIONS="$CMAKE_OPTIONS -DENABLE_TEST=YES -DENABLE_TEST_COVERAGE=YES"
 
 install:
   - travis_wait bash -ex tool/travis/depends.sh
