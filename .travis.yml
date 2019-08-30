@@ -27,6 +27,9 @@ matrix:
   - os: linux
     dist: trusty
     compiler: gcc
+  - os: linux
+    dist: Xenial
+    compiler: gcc
 
 install:
   - travis_wait bash -ex tool/travis/depends.sh
