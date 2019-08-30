@@ -25,19 +25,16 @@ matrix:
     # system cblas will be used by cmake for other xcode versions
   #  osx_image: xcode11
   #  name: "macOS 10.14 (C++)" 
-
   # - os: linux
   #  language: cpp
   #  dist: trusty
   #  compiler: gcc
   #  name: "Ubuntu 14.04 (C++)" 
-
   # - os: linux
   #  language: cpp
   #  dist: Xenial
   #  compiler: gcc
   #  name: "Ubuntu 16.04 (C++)" 
-
   - os: linux
     language: cpp
     dist: Bionic
@@ -46,7 +43,7 @@ matrix:
     install:
       - travis_wait bash -ex tool/travis/depends.sh
       # for python only:
-      sudo pip install codecov coverage
+      - sudo pip install codecov coverage
 
 before_install:
   - export CMAKE_OPTIONS="$CMAKE_OPTIONS -DENABLE_TEST=YES -DENABLE_TEST_COVERAGE=YES"
