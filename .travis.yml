@@ -35,7 +35,7 @@ matrix:
     dist: xenial
     compiler: gcc
     name: "Ubuntu 16.04 (C++)" 
-   - os: linux
+  - os: linux
     language: cpp
     dist: bionic
     compiler: gcc
