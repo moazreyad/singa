@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "singa/core/tensor.h"
+#include <array>
 using singa::Tensor;
 using singa::Shape;
 using singa::Device;
