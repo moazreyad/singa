@@ -363,7 +363,7 @@ TEST_F(TensorMath, SetValueCpp) {
 
 TEST_F(TensorMath, ReshapeCpp) {
   Tensor t(Shape{4});
-  std::array<float,4> dat={1.1f,2.1f,3.1f,4.1f};
+  std::array<float, 4> dat = {1.1f,2.1f,3.1f,4.1f};
   t.CopyDataFromHostPtr(dat.data(),dat.size());
   t.Reshape(Shape{4, 1});
   const float *ptr = t.data<float>();
