@@ -48,7 +48,7 @@ matrix:
 install:
   # - travis_wait bash -ex tool/travis/depends.sh
   # - sudo pip install codecov coverage
-  - sudo apt-get install -y build-essential git python-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev gfortran python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig>=3.0.10 python-pandas python-sklearn unzip wget pkg-config zip g++ zlib1g-dev libcurl3-dev cmake curl unzip dh-autoreconf
+  - sudo apt-get install -y build-essential git python3-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev gfortran python3-matplotlib libblas-dev liblapack-dev libatlas-base-dev python3-dev python3-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig>=3.0.10 pytho3n-pandas python3-sklearn unzip wget pkg-config zip g++ zlib1g-dev libcurl3-dev cmake curl unzip dh-autoreconf
 
 
 after_success: 
