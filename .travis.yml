@@ -23,22 +23,22 @@ addons:
 
 matrix:
   include:
-  - os: osx
-    language: cpp
-    compiler: clang
-    # system cblas will be used by cmake for other xcode versions
-    osx_image: xcode11
-    name: "macOS 10.14 (C++)" 
-  - os: linux
-    language: cpp
-    dist: trusty
-    compiler: gcc
-    name: "Ubuntu 14.04 (C++)" 
-  - os: linux
-    language: cpp
-    dist: xenial
-    compiler: gcc
-    name: "Ubuntu 16.04 (C++)" 
+  # - os: osx
+  #  language: cpp
+  #  compiler: clang
+  #  # system cblas will be used by cmake for other xcode versions
+  #  osx_image: xcode11
+  #  name: "macOS 10.14 (C++)" 
+  #- os: linux
+  #  language: cpp
+  #  dist: trusty
+  #  compiler: gcc
+  #  name: "Ubuntu 14.04 (C++)" 
+  #- os: linux
+  #  language: cpp
+  #  dist: xenial
+  #  compiler: gcc
+  #  name: "Ubuntu 16.04 (C++)" 
   - os: linux
     language: cpp
     dist: bionic
@@ -46,9 +46,9 @@ matrix:
     name: "Ubuntu 18.04 (C++)" 
 
 install:
-  - travis_wait bash -ex tool/travis/depends.sh
-  - sudo pip install codecov coverage
-  - sudo apt-get install -y build-essential git python-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev gfortran python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig=3.0.10 python-pandas python-sklearn unzip wget pkg-config zip g++ zlib1g-dev libcurl3-dev cmake curl unzip dh-autoreconf
+  # - travis_wait bash -ex tool/travis/depends.sh
+  # - sudo pip install codecov coverage
+  - sudo apt-get install -y build-essential git python-pip libfreetype6-dev libxft-dev libncurses-dev libopenblas-dev gfortran python-matplotlib libblas-dev liblapack-dev libatlas-base-dev python-dev python-pydot linux-headers-generic linux-image-extra-virtual unzip python-numpy swig>=3.0.10 python-pandas python-sklearn unzip wget pkg-config zip g++ zlib1g-dev libcurl3-dev cmake curl unzip dh-autoreconf
 
 
 after_success: 
