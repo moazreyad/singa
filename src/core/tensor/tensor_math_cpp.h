@@ -809,11 +809,11 @@ void ComputeCrossEntropy<float, lang::Cpp>(bool int_target,
       for (size_t j = 0; j < dim; j++) {
         sum += tPtr[i * dim + j];
       }
-      float loss = 0.f;
+      float loss_value = 0.f;
       for (size_t j = 0, offset = i * dim; j < dim; j++, offset++) {
-        loss -= tPtr[offset] / sum * std::log((std::max)(pPtr[offset], FLT_MIN));
+        loss_value -= tPtr[offset] / sum * std::log((std::max)(pPtr[offset], FLT_MIN));
       }
-      lossPtr[i] = loss;
+      lossPtr[i] = loss_value;
     }
   }
 }
@@ -866,6 +866,25 @@ void RowMax<float, lang::Cpp>(const Tensor& in, Tensor *out, Context *ctx) {
     }
     outPtr[r] = maxval;
   }
+}
+
+template <>
+void SoftMax<float, lang::Cpp>(const Tensor &in, Tensor *out, Context* ctx) {
+  CHECK_LE(in.nDim(), 2u) << "Axis is required for SoftMax on multi dimemsional tensor";
+  out->CopyData(in);
+  size_t nrow = 1, ncol = in.Size(), size = ncol;
+  if (in.nDim() == 2u) {
+    nrow = in.shape(0);
+    ncol = size / nrow;
+    out->Reshape(Shape{nrow, ncol});
+  }
+  Tensor tmp = RowMax(*out);
+  SubColumn(tmp, out);
+  Exp(*out, out);
+
+  SumColumns(*out, &tmp);
+  DivColumn(tmp, out);
+  out->Reshape(in.shape());
 }
 
 // =========Matrix operations ================================================

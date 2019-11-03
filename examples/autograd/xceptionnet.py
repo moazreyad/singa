@@ -27,9 +27,6 @@ from tqdm import trange
 # the code is modified from
 # https://github.com/Cadene/pretrained-models.pytorch/blob/master/pretrainedmodels/models/xception.py
 
-__all__ = ['xception']
-
-
 class Block(autograd.Layer):
 
     def __init__(self, in_filters, out_filters, reps, strides=1, padding=0, start_with_relu=True, grow_first=True):
@@ -86,6 +83,9 @@ class Block(autograd.Layer):
             skip = x
         y = autograd.add(y, skip)
         return y
+
+
+__all__ = ['Xception']
 
 
 class Xception(autograd.Layer):
@@ -210,10 +210,8 @@ if __name__ == '__main__':
     ty.copy_from_numpy(y)
 
     with trange(niters) as t:
-        for b in t:
+        for _ in t:
             x = model(tx)
             loss = autograd.softmax_cross_entropy(x, ty)
             for p, g in autograd.backward(loss):
-                # print(p.shape, g.shape)
                 sgd.update(p, g)
-                # pass

@@ -90,11 +90,11 @@ class Tensor {
   }
 
   /// data type, including kFloat16, kFloat32, kInt
-  const DataType data_type() const { return data_type_; }
+  DataType data_type() const { return data_type_; }
 
   const Shape &shape() const { return shape_; }
 
-  const size_t shape(const size_t idx) const {
+  size_t shape(const size_t idx) const {
     CHECK_LT(idx, shape_.size());
     return shape_.at(idx);
   }
@@ -504,10 +504,12 @@ void MultColumn(const Tensor &v, Tensor *M);
 void MultRow(const Tensor &v, Tensor *M);
 /// Do softmax for each row. 'in' could be a 1-d or 2-d Tensor.
 Tensor SoftMax(const Tensor &in);
+Tensor SoftMax(const Tensor &in, int axis);
 
 Tensor RowMax(const Tensor &in);
 /// Do softmax for each row. 'in' could be a 1-d or 2-d Tensor.
 void SoftMax(const Tensor &in, Tensor *out);
+void SoftMax(const Tensor &in, Tensor *out, int axis);
 /// Sub column 'v' by each column of matrix M
 void SubColumn(const Tensor &v, Tensor *M);
 /// Sub row 'v' by each row of matrix M; write results into 'out'
