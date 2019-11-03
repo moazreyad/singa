@@ -100,7 +100,7 @@ def create_cuda_gpu():
     Returns:
         a swig converted CudaGPU device.
     '''
-    assert singa.USE_CUDA, 'SINGA has not been compiled with CUDA enabled.'
+    assert singa.USE_CUDA, 'SINGA has not been compiled with CUDA enabled!'
     return singa.Platform.CreateCudaGPUs(1)[0]
 
 
