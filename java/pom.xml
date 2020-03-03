@@ -52,7 +52,7 @@
 	    <scope>compile</scope>
 	</dependency>
   </dependencies>
-	<profiles>
+  <profiles>
   <profile>
       <id>check-rat</id>
       <build>
