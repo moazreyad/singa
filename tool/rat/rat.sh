@@ -1,6 +1,5 @@
-wget https://downloads.apache.org//creadur/apache-rat-0.13/apache-rat-0.13-bin.tar.bz2
-tar -xvf ./apache-rat-0.13-bin.tar.bz2 
-java -jar apache-rat-0.13/apache-rat-0.13.jar .
+cd java
+mvn apache-rat:check -Pcheck-rat -Drat.basedir=..
 
 if [ $? != 0 ]; then
     echo "${red}Rat check failed.${reset}"
