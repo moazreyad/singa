@@ -78,6 +78,7 @@
                 <exclude>examples/imagenet/inception/convert.py</exclude>
                 <exclude>tool/cpplint.py</exclude>
             </excludes>
+	    <consoleOutput>True</consoleOutput>
           </configuration>
         </plugin>
         </plugins>
