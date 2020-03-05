@@ -72,11 +72,12 @@
                 <exclude>src/model/layer/pooling.cl</exclude>
                 <exclude>src/proto/caffe.proto</exclude>
                 <exclude>cmake/Thirdparty/FindViennaCL.cmake</exclude>
-                <exclude>cmake/ThirdParty/FindOpenCL.cmake</exclude>
+                <exclude>cmake/Thirdparty/FindOpenCL.cmake</exclude>
                 <exclude>src/api/numpy.i</exclude>
                 <exclude>doc/en/docs/notebook/utils.py</exclude>
                 <exclude>examples/imagenet/inception/convert.py</exclude>
                 <exclude>tool/cpplint.py</exclude>
+		<exclude>travis*.log</exclude>
             </excludes>
 	    <consoleOutput>True</consoleOutput>
           </configuration>
