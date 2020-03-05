@@ -51,8 +51,6 @@ matrix:
     compiler: gcc
     name: "Ubuntu 18.04 (Static Analysis)"
     script:
-      - bash -ex tool/linting/cpp.sh
-      - bash -ex tool/linting/py.sh
       - bash -ex tool/rat/rat.sh
     
 install:
