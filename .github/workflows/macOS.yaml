@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: '3.8' 
       - name: install-build-dependencies
-        run: brew tap homebrew/science && brew install opebblas protobuf swig opencv glog lmdb
+        run: brew install openblas protobuf swig opencv glog lmdb
       - name: configure
         run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
       - name: build
