@@ -44,4 +44,6 @@ jobs:
         run: mkdir build && cd build && cmake -DUSE_PYTHON=NO ..
       - name: build
         run: cd build && make
+      - name: C++ test
+        run: build/bin/test_singa
        
