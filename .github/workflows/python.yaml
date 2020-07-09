@@ -41,5 +41,5 @@ jobs:
       - name: build-python
         run: cd build/python && pip install .
       - name: test-python
-        run: cd test/python %% python3 run.py
+        run: cd test/python && python3 run.py
        
