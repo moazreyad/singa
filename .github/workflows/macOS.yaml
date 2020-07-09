@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v1
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8' 
+          python-version: '3.7' 
       - name: install-build-dependencies
         run: brew install openblas protobuf swig opencv glog lmdb
       - name: configure
@@ -45,5 +45,5 @@ jobs:
       - name: build
         run: cd build && make
         env:
-          CXXFLAGS: "-I /usr/local/lib/python3.8/site-packages/numpy/core/include $CXXFLAGS"
+          CXXFLAGS: "-I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS"
        
