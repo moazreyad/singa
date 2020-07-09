@@ -39,5 +39,5 @@ jobs:
       - name: build
         run: cd build && make
       - name: C++ test
-        run: build/bin/test_singa
+        run: cd build/bin/ && ./test_singa
        
