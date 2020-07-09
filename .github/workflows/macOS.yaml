@@ -39,6 +39,9 @@ jobs:
         run: brew install openblas protobuf swig opencv glog lmdb
       - name: configure
         run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
+        env:
+          CMAKE_INCLUDE_PATH: /usr/local/opt/openblas/include:$CMAKE_INCLUDE_PATH
+          CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
       - name: build
         run: cd build && make
        
