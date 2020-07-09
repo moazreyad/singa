@@ -44,4 +44,6 @@ jobs:
           CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
       - name: build
         run: cd build && make
+        env:
+          CXXFLAGS: "-I /usr/local/lib/python3.8/site-packages/numpy/core/include $CXXFLAGS"
        
