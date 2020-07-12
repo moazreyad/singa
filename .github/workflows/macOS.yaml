@@ -35,11 +35,11 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: '3.7' 
-      # - name: install-build-dependencies
-        #run: pip3 install numpy && python -c "import sys; print(sys.path)" && echo $PYTHONPATH
+      - name: install-build-dependencies
+        run: pip3 install numpy 
         # run: brew install protobuf swig opencv glog lmdb numpy
       - name: check path
-        run: type -a python3
+        run: pip3 shown numpy
       # - name: configure
       #  run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
       #  env:
