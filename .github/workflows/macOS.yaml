@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: '3.7' 
       - name: install-build-dependencies  
-        run: brew install protobuf swig opencv glog lmdb numpy
+        run: brew install protobuf swig opencv glog lmdb numpy && pip3 install numpy
       - name: show-path
         run: pip3 show numpy
       - name: check-path
