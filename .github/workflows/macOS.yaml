@@ -36,10 +36,10 @@ jobs:
         with:
           python-version: '3.7' 
       - name: install-build-dependencies
-        run: pip3 install numpy
+        run: pip3 install numpy && python -c "import sys; print(sys.path)"
         # run: brew install protobuf swig opencv glog lmdb numpy
       - name: check numpy
-        run: ls /usr/local/lib/python3.7/site-packages/numpy/core/include
+        run: ls /usr/local/lib/python3.7.8
       # - name: configure
       #  run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
       #  env:
