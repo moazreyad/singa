@@ -37,7 +37,7 @@ jobs:
           python-version: '3.7' 
       - name: install-build-dependencies  
         run: brew install protobuf swig opencv glog lmdb numpy
-      - name: check path
+      - name: check-path
         run: ls /Users/runner/hostedtoolcache/Python/3.7.8/x64/lib/python3.7/site-packages/numpy/core/include
       - name: configure        
         run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
