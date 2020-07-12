@@ -35,18 +35,15 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: '3.7' 
-      - name: install-build-dependencies
-        run: pip3 install numpy 
-        # run: brew install protobuf swig opencv glog lmdb numpy
-      - name: check path
-        run: pip3 show numpy
-      # - name: configure
-      #  run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
-      #  env:
-      #    CMAKE_INCLUDE_PATH: /usr/local/opt/openblas/include:$CMAKE_INCLUDE_PATH
-      #    CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
-      # - name: build
-      #  run: cd build && make
-      #  env:
-      #    CXXFLAGS: -I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS
+      - name: install-build-dependencies  
+        run: brew install protobuf swig opencv glog lmdb numpy
+      - name: configure        
+        run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
+        env:
+          CMAKE_INCLUDE_PATH: /usr/local/opt/openblas/include:$CMAKE_INCLUDE_PATH
+          CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
+      - name: build
+        run: cd build && make
+        env:
+          CXXFLAGS: -I  /Users/runner/hostedtoolcache/Python/3.7.8/x64/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS
        
