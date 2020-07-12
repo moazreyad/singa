@@ -39,7 +39,7 @@ jobs:
         run: pip3 install numpy 
         # run: brew install protobuf swig opencv glog lmdb numpy
       - name: check path
-        run: pip3 shown numpy
+        run: pip3 show numpy
       # - name: configure
       #  run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
       #  env:
