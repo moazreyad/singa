@@ -45,5 +45,5 @@ jobs:
       - name: build
         run: cd build && make
         env:
-          CXXFLAGS: "-I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS"
+          CXXFLAGS: -I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS
        
