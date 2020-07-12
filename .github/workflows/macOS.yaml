@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: '3.7' 
       - name: install-build-dependencies
-        run: pip3 install numpy && python -c "import sys; print(sys.path)"
+        run: pip3 install numpy && python -c "import sys; print(sys.path)" && echo $PYTHONPATH
         # run: brew install protobuf swig opencv glog lmdb numpy
       - name: check numpy
         run: ls /usr/local/lib/python3.7.8
