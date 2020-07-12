@@ -36,14 +36,17 @@ jobs:
         with:
           python-version: '3.7' 
       - name: install-build-dependencies
-        run: brew install openblas protobuf swig opencv glog lmdb numpy
-      - name: configure
-        run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
-        env:
-          CMAKE_INCLUDE_PATH: /usr/local/opt/openblas/include:$CMAKE_INCLUDE_PATH
-          CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
-      - name: build
-        run: cd build && make
-        env:
-          CXXFLAGS: -I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS
+        run: brew install numpy
+        # run: brew install openblas protobuf swig opencv glog lmdb numpy
+      - name: check numpy
+        run: ls /usr/local/lib/python3.7/site-packages/numpy/core/include
+      # - name: configure
+      #  run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES ..
+      #  env:
+      #    CMAKE_INCLUDE_PATH: /usr/local/opt/openblas/include:$CMAKE_INCLUDE_PATH
+      #    CMAKE_LIBRARY_PATH: /usr/local/opt/openblas/lib:$CMAKE_LIBRARY_PATH
+      # - name: build
+      #  run: cd build && make
+      #  env:
+      #    CXXFLAGS: -I /usr/local/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS
        
