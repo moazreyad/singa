@@ -52,4 +52,8 @@ jobs:
           CXXFLAGS: -I  /Users/runner/hostedtoolcache/Python/3.7.8/x64/lib/python3.7/site-packages/numpy/core/include $CXXFLAGS 
       - name: C++ test
         run: build/bin/test_singa
+      - name: Install singa python
+        run: cd build/python && pip3 install .
+      - name: Python test
+        run: cd test/python && python3 run.py
        
