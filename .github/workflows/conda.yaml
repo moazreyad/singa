@@ -33,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: install-conda-build
-        run: conda install conda-build
+        run: conda install conda-build 
+      - name: conda-config
+        run: conda config --add channels conda-forge
       - name: build-singa-conda
         run: conda build tool/conda/singa 
