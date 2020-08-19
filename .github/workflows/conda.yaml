@@ -32,7 +32,5 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
-      - name: install-dependencies
-        run: bash -ex tool/travis/depends.sh
-      - name: build
-        run: bash -ex tool/travis/build.sh
+      - name: build-singa-conda-py3.7
+        run: conda build tool/conda/singa --python 3.7
