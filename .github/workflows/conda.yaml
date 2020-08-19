@@ -35,6 +35,6 @@ jobs:
       - name: install-conda-build
         run: conda install conda-build 
       - name: conda-config
-        run: conda config --add channels conda-forge
+        run: conda config --add channels conda-forge && conda config --add channels nusdbsystem
       - name: build-singa-conda
         run: conda build tool/conda/singa 
