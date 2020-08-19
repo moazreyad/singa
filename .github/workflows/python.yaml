@@ -39,7 +39,7 @@ jobs:
       - name: build-cpp
         run: cd build && make
       - name: install-python-dependecies
-        run: pip3 install numpy deprecated
+        run: pip3 install numpy deprecated protobuf
       - name: build-python
         run: cd build/python && pip3 install .
       - name: test-python
