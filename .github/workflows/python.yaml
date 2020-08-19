@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: install-build-dependencies
-        run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig libcurl3-dev cmake dh-autoreconf python3-matplotlib  python3-dev python3-pydot python3-numpy python3-pandas python3-sklearn  
+        run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig libcurl3-dev cmake dh-autoreconf python3-matplotlib  python3-dev python3-pydot python3-numpy python3-pandas python3-sklearn python3-setuptools  
       - name: configure
         run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES -DENABLE_TEST=YES ..
       - name: build-cpp
