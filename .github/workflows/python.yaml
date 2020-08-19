@@ -26,22 +26,24 @@ on:
   pull_request:
     
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
-#jobs:
-#  build-ubuntu-python:
-#    runs-on: ubuntu-latest
+jobs:
+  build-ubuntu-python:
+    runs-on: ubuntu-latest
 
-   # steps:
-    #  - uses: actions/checkout@v1
-     # - name: install-build-dependencies
-    #    run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig libcurl3-dev cmake dh-autoreconf python3-matplotlib  python3-dev python3-pydot python3-numpy python3-pandas python3-sklearn  
-      #- name: configure
-     #   run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES -DENABLE_TEST=YES ..
-     # - name: build-cpp
-     #   run: cd build && make
-     # - name: test-cpp
-      #  run: ./bin/test_singa
-     # - name: build-python
-     #   run: cd build/python && pip install .
-     # - name: test-python
-      #  run: cd test/python && python3 run.py
+    steps:
+      - uses: actions/checkout@v1
+      - name: install-build-dependencies
+        run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig libcurl3-dev cmake dh-autoreconf python3-matplotlib  python3-dev python3-pydot python3-numpy python3-pandas python3-sklearn  
+      - name: configure
+        run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES -DENABLE_TEST=YES ..
+      - name: build-cpp
+        run: cd build && make
+      - name: test-cpp
+        run: ./bin/test_singa
+      - name: install-python-dependecies
+        run: pip3 install numpy deprecated
+      - name: build-python
+        run: cd build/python && pip install .
+      - name: test-python
+        run: cd test/python && python3 run.py
        
