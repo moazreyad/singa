@@ -41,7 +41,7 @@ jobs:
       - name: install-python-dependecies
         run: pip3 install numpy deprecated
       - name: build-python
-        run: cd build/python && pip install .
+        run: cd build/python && pip3 install .
       - name: test-python
         run: cd test/python && python3 run.py
        
