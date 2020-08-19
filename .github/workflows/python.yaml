@@ -38,8 +38,6 @@ jobs:
         run: mkdir build && cd build && cmake -DUSE_PYTHON3=YES -DENABLE_TEST=YES ..
       - name: build-cpp
         run: cd build && make
-      - name: test-cpp
-        run: ./bin/test_singa
       - name: install-python-dependecies
         run: pip3 install numpy deprecated
       - name: build-python
