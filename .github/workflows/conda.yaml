@@ -32,5 +32,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
+      - name: install-conda-build
+        run: conda install conda-build
       - name: build-singa-conda-py3.7
         run: conda build tool/conda/singa --python 3.7
