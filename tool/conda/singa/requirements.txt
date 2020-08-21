@@ -1,0 +1,13 @@
+cudnn {{ cudnn }}       # ['cudnn' in str(build_str)]
+python {{ python }}
+nccl {{ nccl }}         # ['nccl' in str(build_str)]
+mpich {{ mpich }}       # ['mpich' in str(build_str)]
+libprotobuf 3.10.0      # [osx]
+libprotobuf 3.9.2       # [linux]
+libopenblas 0.3.9
+pillow
+future
+tqdm
+onnx 1.6.0
+deprecated 1.2.7
+pytest
