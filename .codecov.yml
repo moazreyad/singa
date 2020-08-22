@@ -1,0 +1,2 @@
+fixes:
+    - "/home/runner/work/singa/::"        # reduce root e.g., "before/path/" => "path/"
