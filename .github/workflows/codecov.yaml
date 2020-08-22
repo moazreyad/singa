@@ -46,5 +46,7 @@ jobs:
         run: cd build && make
       - name: C++ test
         run: build/bin/test_singa
+      - name: Check codecov report
+        run: ls
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
