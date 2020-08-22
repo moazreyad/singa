@@ -37,7 +37,7 @@ jobs:
       - name: get-oneDNN
         run: wget https://github.com/oneapi-src/oneDNN/releases/download/v1.1/dnnl_lnx_1.1.0_cpu_gomp.tgz -P /tmp/ && tar zxf /tmp/dnnl_lnx_1.1.0_cpu_gomp.tgz -C /tmp
       - name: install-build-dependencies
-        run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig dh-autoreconf
+        run: sudo apt-get install -y libgoogle-glog-dev libprotobuf-dev protobuf-compiler libncurses-dev libopenblas-dev gfortran libblas-dev liblapack-dev libatlas-base-dev swig dh-autoreconf lcov
       - name: configure
         run: mkdir build && cd build && cmake -DUSE_PYTHON=NO -DENABLE_TEST=YES -DCODE_COVERAGE=YES -DUSE_DNNL=YES ..
         env:
@@ -46,7 +46,7 @@ jobs:
         run: cd build && make
       - name: C++ test
         run: build/bin/test_singa
-      - name: Check codecov report
-        run: ls
+      - name: lcov
+        run: lcov --capture --directory . --output-file coverage.info  && lcov --remove coverage.info '/usr/*' --output-file coverage.info && lcov --list coverage.info && ls -l
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
