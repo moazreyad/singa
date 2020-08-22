@@ -32,6 +32,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
+      - name: pwd
+        run: pwd
       - name: get-oneDNN
         run: wget https://github.com/oneapi-src/oneDNN/releases/download/v1.1/dnnl_lnx_1.1.0_cpu_gomp.tgz -P /tmp/ && tar zxf /tmp/dnnl_lnx_1.1.0_cpu_gomp.tgz -C /tmp
       - name: install-build-dependencies
