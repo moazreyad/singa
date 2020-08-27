@@ -67,6 +67,7 @@ INCLUDE_DIRECTORIES(${SINGA_INCLUDE_DIR})
 
 OPTION(USE_CUDA "Use Cuda libs" OFF)
 OPTION(ENABLE_TEST "Enable unit test" OFF)
+option(CODE_COVERAGE "Enable coverage reporting" OFF)
 OPTION(USE_PYTHON "Generate py wrappers" ON)
 OPTION(USE_PYTHON3 "Python 3x" OFF)
 
@@ -185,24 +186,6 @@ INSTALL(DIRECTORY include/singa DESTINATION ${CMAKE_INSTALL_PREFIX}/include/)
 INSTALL(DIRECTORY ${CMAKE_BINARY_DIR}/lib DESTINATION ${CMAKE_INSTALL_PREFIX}/ PATTERN "*libgtest.a" EXCLUDE )
 
 INSTALL(CODE "execute_process(COMMAND python setup.py install --prefix=${CMAKE_INSTALL_PREFIX} WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/python)")
-
-# Code Coverage Configuration
-add_library(coverage_config INTERFACE)
-
-option(CODE_COVERAGE "Enable coverage reporting" OFF)
-if(CODE_COVERAGE)
-  # Add required flags (GCC & LLVM/Clang)
-  target_compile_options(coverage_config INTERFACE
-    -O0        # no optimization
-    -g         # generate debug info
-    --coverage # sets all required flags
-  )
-  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.13)
-    target_link_options(coverage_config INTERFACE --coverage)
-  else()
-    target_link_libraries(coverage_config INTERFACE --coverage)
-  endif()
-endif(CODE_COVERAGE)
 
 # CPack
 IF(PACKAGE)
