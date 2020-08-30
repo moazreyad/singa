@@ -21,3 +21,8 @@ updates:
     directory: "/tool/conda/singa" # Location of package manifests
     schedule:
       interval: "daily"
+  - package-ecosystem: "maven" # See documentation for possible values
+    directory: "/jave" # Location of package manifests
+    schedule:
+      interval: "daily"
+
