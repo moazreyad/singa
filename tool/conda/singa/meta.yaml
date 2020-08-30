@@ -45,14 +45,9 @@ requirements:
     - make # [unix]
 
   host:
-    - swig 3.0.12
-    - openblas 0.3.9
     - protobuf 3.10.0         # [osx]
     - protobuf 3.9.2          # [linux]
-    - glog 0.3.5
     - numpy >=1.16,<2.0
-    - pytest
-    - deprecated 1.2.7
     - cudnn {{ cudnn }}       # ['cudnn' in str(build_str)]
     - dnnl {{ dnnl }}
     - python {{ python }}
@@ -63,9 +58,12 @@ requirements:
     - {{ pin_compatible('glog', max_pin='x.x') }}
     - {{ pin_compatible('numpy', max_pin='x.x') }}
     - {{ pin_compatible('dnnl', max_pin='x.x') }}
-    {% for req in data.get('requirements.txt', []) %}
-    - {{ req }}
-    {% endfor %}
+    - cudnn {{ cudnn }}       # ['cudnn' in str(build_str)]
+    - python {{ python }}
+    - nccl {{ nccl }}         # ['nccl' in str(build_str)]
+    - mpich {{ mpich }}       # ['mpich' in str(build_str)]
+    - libprotobuf 3.10.0      # [osx]
+    - libprotobuf 3.9.2       # [linux]
 
 test:
   source_files:
