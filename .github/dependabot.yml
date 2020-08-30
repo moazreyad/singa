@@ -22,7 +22,7 @@ updates:
     schedule:
       interval: "daily"
   - package-ecosystem: "maven" # See documentation for possible values
-    directory: "/jave" # Location of package manifests
+    directory: "/java" # Location of package manifests
     schedule:
       interval: "daily"
 
