@@ -241,6 +241,31 @@ void Abs<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
 }
 
 template <>
+void Erf<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  traverse_unary<float>(in, out, [](float x) { return erff(x); });
+}
+
+template <>
+void CastCopy<float, half_float::half, lang::Cpp>(const Tensor *src,
+                                                  Tensor *dst, Context *ctx) {
+  half_float::half *dst_array =
+      static_cast<half_float::half *>(dst->block()->mutable_data());
+  const float *src_array = static_cast<const float *>(src->block()->data());
+  for (int i = 0; i < dst->Size(); ++i)
+    dst_array[i] = static_cast<half_float::half>(src_array[i]);
+}
+
+template <>
+void CastCopy<half_float::half, float, lang::Cpp>(const Tensor *src,
+                                                  Tensor *dst, Context *ctx) {
+  float *dst_array = static_cast<float *>(dst->block()->mutable_data());
+  const half_float::half *src_array =
+      static_cast<const half_float::half *>(src->block()->data());
+  for (int i = 0; i < dst->Size(); ++i)
+    dst_array[i] = static_cast<float>(src_array[i]);
+}
+
+template <>
 void CastCopy<float, int, lang::Cpp>(const Tensor *src, Tensor *dst,
                                      Context *ctx) {
   int *dst_array = static_cast<int *>(dst->block()->mutable_data());
@@ -259,6 +284,28 @@ void CastCopy<int, float, lang::Cpp>(const Tensor *src, Tensor *dst,
 template <>
 void Ceil<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
   traverse_unary<float>(in, out, [](float x) { return std::ceil(x); });
+}
+
+template <>
+void Floor<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  traverse_unary<float>(in, out, [](float x) { return std::floor(x); });
+}
+
+template <>
+void Round<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  traverse_unary<float>(in, out, [](float x) { return std::round(x); });
+}
+
+template <>
+void RoundE<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  traverse_unary<float>(in, out, [](float x) {
+    float doub = x * 2;
+    if (ceilf(doub) == doub) {
+      return std::round(x / 2) * 2;
+    } else {
+      return std::round(x);
+    }
+  });
 }
 
 #ifdef USE_DNNL
@@ -309,7 +356,27 @@ void SoftMaxBackward<float, lang::Cpp>(const Tensor &in, Tensor *out,
                                         {DNNL_ARG_DST, fdout_mem}});
   ctx->dnnl_stream.wait();
 }
+#else
+// native Softmax without DNNL
+template <>
+void SoftMax<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  CHECK_LE(in.nDim(), 2u)
+      << "Axis is required for SoftMax on multi dimemsional tensor";
+  out->CopyData(in);
+  size_t nrow = 1, ncol = in.Size(), size = ncol;
+  if (in.nDim() == 2u) {
+    nrow = in.shape(0);
+    ncol = size / nrow;
+    out->Reshape(Shape{nrow, ncol});
+  }
+  Tensor tmp = RowMax(*out);
+  SubColumn(tmp, out);
+  Exp(*out, out);
 
+  SumColumns(*out, &tmp);
+  DivColumn(tmp, out);
+  out->Reshape(in.shape());
+}
 #endif  // USE_DNNL
 
 template <>
@@ -403,6 +470,13 @@ void GE<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
 }
 
 template <>
+void GE<int, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                        Context *ctx) {
+  auto ge_lambda_binary = [](int a, int b) { return (a >= b) ? 1.f : 0.f; };
+  traverse_binary<int>(in1, in2, out, ge_lambda_binary);
+}
+
+template <>
 void GT<float, lang::Cpp>(const Tensor &in, const float x, Tensor *out,
                           Context *ctx) {
   auto gt_lambda = [&x](float a) { return (a > x) ? 1.f : 0.f; };
@@ -417,6 +491,13 @@ void GT<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
 }
 
 template <>
+void GT<int, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                        Context *ctx) {
+  auto gt_lambda_binary = [](int a, int b) { return (a > b) ? 1.f : 0.f; };
+  traverse_binary<int>(in1, in2, out, gt_lambda_binary);
+}
+
+template <>
 void LE<float, lang::Cpp>(const Tensor &in, const float x, Tensor *out,
                           Context *ctx) {
   auto le_lambda = [&x](float a) { return (a <= x) ? 1.f : 0.f; };
@@ -428,6 +509,13 @@ void LE<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
                           Context *ctx) {
   auto le_lambda_binary = [](float a, float b) { return (a <= b) ? 1.f : 0.f; };
   traverse_binary<float>(in1, in2, out, le_lambda_binary);
+}
+
+template <>
+void LE<int, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                        Context *ctx) {
+  auto le_lambda_binary = [](int a, int b) { return (a <= b) ? 1.f : 0.f; };
+  traverse_binary<int>(in1, in2, out, le_lambda_binary);
 }
 
 template <>
@@ -451,6 +539,34 @@ void LT<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
                           Context *ctx) {
   auto lt_lambda_binary = [](float a, float b) { return (a < b) ? 1.f : 0.f; };
   traverse_binary<float>(in1, in2, out, lt_lambda_binary);
+}
+
+template <>
+void LT<int, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                        Context *ctx) {
+  auto lt_lambda_binary = [](int a, int b) { return (a < b) ? 1.f : 0.f; };
+  traverse_binary<int>(in1, in2, out, lt_lambda_binary);
+}
+
+template <>
+void EQ<float, lang::Cpp>(const Tensor &in, const float x, Tensor *out,
+                          Context *ctx) {
+  auto eq_lambda = [&x](float a) { return (a == x) ? 1.f : 0.f; };
+  traverse_unary<float>(in, out, eq_lambda);
+}
+
+template <>
+void EQ<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                          Context *ctx) {
+  auto eq_lambda_binary = [](float a, float b) { return (a == b) ? 1.f : 0.f; };
+  traverse_binary<float>(in1, in2, out, eq_lambda_binary);
+}
+
+template <>
+void EQ<int, lang::Cpp>(const Tensor &in1, const Tensor &in2, Tensor *out,
+                        Context *ctx) {
+  auto eq_lambda_binary = [](int a, int b) { return (a == b) ? 1.f : 0.f; };
+  traverse_binary<int>(in1, in2, out, eq_lambda_binary);
 }
 
 template <>
@@ -481,6 +597,14 @@ void Set<float, lang::Cpp>(const float x, Tensor *out, Context *ctx) {
 template <>
 void Set<int, lang::Cpp>(const int x, Tensor *out, Context *ctx) {
   int *outPtr = static_cast<int *>(out->block()->mutable_data());
+  for (size_t i = 0; i < out->Size(); i++) outPtr[i] = x;
+}
+
+template <>
+void Set<half_float::half, lang::Cpp>(const half_float::half x, Tensor *out,
+                                      Context *ctx) {
+  half_float::half *outPtr =
+      static_cast<half_float::half *>(out->block()->mutable_data());
   for (size_t i = 0; i < out->Size(); i++) outPtr[i] = x;
 }
 
@@ -564,6 +688,19 @@ void Transform<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
 }
 
 template <>
+void Transform<int, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
+  auto identity = [](int a) { return a; };
+  traverse_unary<int>(in, out, identity);
+}
+
+template <>
+void Transform<half_float::half, lang::Cpp>(const Tensor &in, Tensor *out,
+                                            Context *ctx) {
+  auto identity = [](half_float::half a) { return a; };
+  traverse_unary<half_float::half>(in, out, identity);
+}
+
+template <>
 void Bernoulli<float, lang::Cpp>(const float p, Tensor *out, Context *ctx) {
   std::bernoulli_distribution distribution(p);
   float *outPtr = static_cast<float *>(out->block()->mutable_data());
@@ -580,6 +717,16 @@ void Gaussian<float, lang::Cpp>(const float mean, const float std, Tensor *out,
   for (size_t i = 0; i < out->Size(); i++) {
     outPtr[i] = static_cast<float>(distribution(ctx->random_generator));
   }
+}
+
+template <>
+void Gaussian<half_float::half, lang::Cpp>(const half_float::half mean,
+                                           const half_float::half std,
+                                           Tensor *out, Context *ctx) {
+  Tensor tmp(out->shape(), out->device(), kFloat32);
+  Gaussian<float, lang::Cpp>(static_cast<float>(mean), static_cast<float>(std),
+                             &tmp, ctx);
+  CastCopy<float, half_float::half, lang::Cpp>(&tmp, out, ctx);
 }
 
 template <>
@@ -638,20 +785,6 @@ void Asum<float, lang::Cpp>(const Tensor &in, float *out, Context *ctx) {
   *out = cblas_sasum(in.Size(), inPtr, 1);  // not using strided traversal
 }
 
-// template <>
-// void Axpy<float, lang::Cpp>(const float alpha,
-//                             const Tensor& in, Tensor *out, Context *ctx) {
-//   //check input tensor for strides first
-//   if (in.stride() == out->stride()) {
-//     const float *inPtr = static_cast<const float *>(in.block()->data());
-//     float *outPtr = static_cast<float *>(out->block()->mutable_data());
-//     cblas_saxpy(in.Size(), alpha, inPtr, 1, outPtr, 1);
-//   } else {
-//     //LOG(FATAL) << "Axpy, input and output strides do not match." ;
-//     EltwiseMult<float, lang::Cpp>(in, alpha, out, ctx);
-//   }
-// }
-
 template <>
 void Axpy<float, lang::Cpp>(const float alpha, const Tensor &in, Tensor *out,
                             Context *ctx) {
@@ -670,20 +803,25 @@ void Axpy<float, lang::Cpp>(const float alpha, const Tensor &in, Tensor *out,
   }
 }
 
-// template <>
-// void Axpy<float, lang::Cpp>(const float alpha,
-//                            const Tensor& in, Tensor *out, Context *ctx) {
-//  //check input tensor for strides first
-//  if (in.stride() == out->stride()) {
-//    const float *inPtr = static_cast<const float *>(in.block()->data());
-//    float *outPtr = static_cast<float *>(out->block()->mutable_data());
-//    cblas_saxpy(in.Size(), alpha, inPtr, 1, outPtr, 1);
-//  } else if(out->transpose()) {
-//    LOG(FATAL) << "output is already transposed." ;
-//  } else {
-//    LOG(FATAL) << "Axpy, input and output strides do not match." ;
-//  }
-// }
+template <>
+void Axpy<float, lang::Cpp>(const Tensor &alpha, const Tensor &in, Tensor *out,
+                            Context *ctx) {
+  // check input tensor for strides first
+  const float *inPtr = static_cast<const float *>(in.block()->data());
+  float *outPtr = static_cast<float *>(out->block()->mutable_data());
+  const float a = *static_cast<const float*>(alpha.block()->data());
+
+  if (in.stride() == out->stride()) {
+    cblas_saxpy(in.Size(), a, inPtr, 1, outPtr, 1);
+  } else {
+    // LOG(FATAL) << "Axpy, input and output strides do not match." ;
+    Tensor t(in.shape(), in.device(), in.data_type());
+    EltwiseMult<float, lang::Cpp>(in, a, &t, ctx);
+    float *tPtr = static_cast<float *>(t.block()->mutable_data());
+    cblas_saxpy(in.Size(), 1, tPtr, 1, outPtr, 1);
+  }
+}
+
 
 template <>
 void Dot<float, lang::Cpp>(const Tensor &in1, const Tensor &in2, float *out,
@@ -920,12 +1058,12 @@ void GEMV<float, lang::Cpp>(const float alpha, const Tensor &A, const Tensor &v,
 template <>
 void ComputeCrossEntropy<float, lang::Cpp>(bool int_target,
                                            const size_t batchsize,
-                                           const size_t dim, const Block *p,
-                                           const Block *t, Block *loss,
+                                           const size_t dim, const Tensor &p,
+                                           const Tensor &t, Tensor *loss,
                                            Context *ctx) {
-  const float *pPtr = static_cast<const float *>(p->data());
-  const int *tPtr = static_cast<const int *>(t->data());
-  float *lossPtr = static_cast<float *>(loss->mutable_data());
+  const float *pPtr = static_cast<const float *>(p.block()->data());
+  const int *tPtr = static_cast<const int *>(t.block()->data());
+  float *lossPtr = static_cast<float *>(loss->block()->mutable_data());
   if (int_target) {
     for (size_t i = 0; i < batchsize; i++) {
       int truth_idx = tPtr[i];
@@ -952,13 +1090,14 @@ void ComputeCrossEntropy<float, lang::Cpp>(bool int_target,
 template <>
 void SoftmaxCrossEntropyBwd<float, lang::Cpp>(bool int_target,
                                               const size_t batchsize,
-                                              const size_t dim, const Block *p,
-                                              const Block *t, Block *grad,
+                                              const size_t dim, const Tensor &p,
+                                              const Tensor &t, Tensor *grad,
                                               Context *ctx) {
-  CHECK_EQ(p, grad) << "Use the same pointer to optimize performance";
+  CHECK_EQ(p.block(), grad->block())
+      << "Use the same pointer to optimize performance";
   // const float* pPtr = static_cast<const float*>(p->data());
-  const int *tPtr = static_cast<const int *>(t->data());
-  float *gradPtr = static_cast<float *>(grad->mutable_data());
+  const int *tPtr = static_cast<const int *>(t.block()->data());
+  float *gradPtr = static_cast<float *>(grad->block()->mutable_data());
 
   if (int_target) {
     for (size_t i = 0; i < batchsize; i++) {
@@ -1000,121 +1139,7 @@ void RowMax<float, lang::Cpp>(const Tensor &in, Tensor *out, Context *ctx) {
   }
 }
 
-// =========Matrix operations ================================================
-/*
-template <>
-void SoftMax<float, lang::Cpp>(const Tensor &in, Tensor *out, Context* ctx) {
-  CHECK_LE(in.nDim(), 2u) << "Axis is required for SoftMax on multi dimemsional
-tensor";
-  out->CopyData(in);
-  size_t nrow = 1, ncol = in.Size(), size = ncol;
-  if (in.nDim() == 2u) {
-    nrow = in.shape(0);
-    ncol = size / nrow;
-    out->Reshape(Shape{nrow, ncol});
-  }
-  Tensor tmp = RowMax(*out);
-  SubColumn(tmp, out);
-  Exp(*out, out);
 
-  SumColumns(*out, &tmp);
-  DivColumn(tmp, out);
-  out->Reshape(in.shape());
-}
-
-template <>
-void AddCol<float, lang::Cpp>(const size_t nrow, const size_t ncol,
-                              const Tensor& A, const Tensor& v, Tensor* out,
-                              Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *APtr = static_cast<const float *>(A.data());
-  const float *vPtr = static_cast<const float *>(v.data());
-  for (size_t r = 0; r < nrow; r++) {
-    size_t offset = r * ncol;
-    for (size_t c = 0; c < ncol; c++) {
-      outPtr[offset + c] = APtr[offset + c] + vPtr[r];
-    }
-  }
-}
-
-template <>
-void AddRow<float, lang::Cpp>(const size_t nrow, const size_t ncol,
-                              const Tensor& A, const Tensor& v, Tensor* out,
-                              Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *APtr = static_cast<const float *>(A.data());
-  const float *vPtr = static_cast<const float *>(v.data());
-  for (size_t r = 0; r < nrow; r++) {
-    size_t offset = r * ncol;
-    for (size_t c = 0; c < ncol; c++) {
-      outPtr[offset + c] = APtr[offset + c] + vPtr[c];
-    }
-  }
-}
-template <>
-void Outer<float, lang::Cpp>(const size_t m, const size_t n, const Tensor& in1,
-                             const Tensor& in2, Tensor* out, Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *in1Ptr = static_cast<const float *>(in1.data());
-  const float *in2Ptr = static_cast<const float *>(in2.data());
-  for (size_t r = 0; r < m; r++) {
-    size_t offset = r * n;
-    for (size_t c = 0; c < n; c++) {
-      outPtr[offset + c] = in1Ptr[r] * in2Ptr[c];
-    }
-  }
-}
-template <>
-void Softmax<float, lang::Cpp>(const size_t nrow, const size_t ncol,
-                               const Tensor& in, Tensor* out, Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *inPtr = static_cast<const float *>(in.data());
-  float *bPtr = new float[ncol];
-  for (size_t r = 0; r < nrow; r++) {
-    size_t offset = r * ncol;
-    float denom = 0.f;
-    for (size_t c = 0; c < ncol; c++) {
-      bPtr[c] = exp(inPtr[offset + c]);
-      denom += bPtr[c];
-    }
-    for (size_t c = 0; c < ncol; c++) {
-      size_t idx = offset + c;
-      outPtr[idx] = bPtr[c] / denom;
-    }
-  }
-  delete bPtr;
-}
-
-template <>
-void SumColumns<float, lang::Cpp>(const size_t nrow, const size_t ncol,
-                                  const Tensor& in, Tensor* out, Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *inPtr = static_cast<const float *>(in.data());
-  for (size_t c = 0; c < ncol; c++) {
-    outPtr[c] = 0.f;
-  }
-  for (size_t r = 0; r < nrow; r++) {
-    size_t offset = r * ncol;
-    for (size_t c = 0; c < ncol; c++) {
-      outPtr[c] += inPtr[offset + c];
-    }
-  }
-}
-
-template <>
-void SumRows<float, lang::Cpp>(const size_t nrow, const size_t ncol,
-                               const Tensor& in, Tensor* out, Context *ctx) {
-  float *outPtr = static_cast<float *>(out->mutable_data());
-  const float *inPtr = static_cast<const float *>(in.data());
-  for (size_t r = 0; r < nrow; r++) {
-    size_t offset = r * ncol;
-    outPtr[r] = 0.f;
-    for (size_t c = 0; c < ncol; c++) {
-      outPtr[r] += inPtr[offset + c];
-    }
-  }
-}
-*/
 }  // namespace singa
 
 #endif  // SINGA_CORE_TENSOR_TENSOR_MATH_CPP_H_

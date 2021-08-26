@@ -20,7 +20,7 @@
 # https://docs.conda.io/projects/conda-build/en/latest/resources/define-metadata.html#templating-with-jinja
 # {% set data = load_setup_py_data(setup_file='../../../python/singa/setup.py', from_recipe_dir=True) %}
 
-{% set version = "2.1.0.dev" %}
+{% set version = "3.2.0" %}
 
 package:
   name: singa
@@ -50,7 +50,9 @@ requirements:
     - protobuf 3.10.0         # [osx]
     - protobuf 3.9.2          # [linux]
     - glog 0.3.5
-    - numpy 1.16.5
+    - numpy >=1.16,<2.0
+    - pytest
+    - deprecated 1.2.7
     - cudnn {{ cudnn }}       # ['cudnn' in str(build_str)]
     - dnnl {{ dnnl }}
     - python {{ python }}
@@ -73,13 +75,16 @@ requirements:
     - tqdm
     - onnx 1.6.0
     - deprecated 1.2.7
-
+    
 test:
+  requires:
+    - pytest-cov
+    - tabulate
+    - codecov
   source_files:
     - test/python/*.py
   commands:
-    - cd test/python && python run.py
-
+    - {{ environ.get('TEST_COMMAND', 'cd test/python && python run.py') }}
 about:
   home: http://singa.apache.org/
   license: Apache V2

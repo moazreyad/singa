@@ -105,9 +105,6 @@ Communicator::Communicator(int buffSize) {
 void Communicator::setup() {
   CUDA_CHECK(cudaSetDevice(local_rank));
   NCCLCHECK(ncclCommInitRank(&comm, world_size, id, global_rank));
-  CUDA_CHECK(cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking));
-  CUDA_CHECK(cudaStreamCreateWithFlags(&c1, cudaStreamNonBlocking));
-  CUDA_CHECK(cudaStreamCreateWithFlags(&c2, cudaStreamNonBlocking));
   CUDA_CHECK(cudaMalloc(&fusedSendBuff, maxSize * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&fusedRecvBuff, maxSize * sizeof(float)));
   CUDA_CHECK(cudaEventCreateWithFlags(
@@ -134,7 +131,6 @@ void Communicator::sparsInit() {
   CUDA_CHECK(cudaMalloc(&xInd, (int)(sizeof(int) * maxSize)));
   CUDA_CHECK(cudaMalloc(&xVal, (int)(sizeof(float) * maxSize)));
   CUSPARSE_CHECK(cusparseCreate(&cusparse_handle));
-  CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, c2));
   nnz = (int *)malloc(sizeof(int));
   nnzAll = (int *)malloc(sizeof(int) * world_size);
   CUDA_CHECK(cudaMalloc(&nnzGPU, sizeof(int) * world_size));
@@ -143,9 +139,9 @@ void Communicator::sparsInit() {
 }
 
 void Communicator::allReduce(int size, void *sendbuff, void *recvbuff,
-                             ncclDataType_t ncclType) {
-  NCCLCHECK(ncclAllReduce((const void *)sendbuff, (void *)recvbuff, size,
-                          ncclType, ncclSum, comm, s));
+                             ncclDataType_t ncclType, Context *ctx) {
+  NCCLCHECK(ncclAllReduce((const void *)sendbuff, recvbuff, size, ncclType,
+                          ncclSum, comm, ctx->s));
 }
 
 void Communicator::generateBlocks(Tensor &t) {
@@ -179,14 +175,14 @@ void Communicator::wait() {
   device_->Exec(
       [this](Context *ctx) mutable {
         // synchronizing on all the CUDA streams used by communicator
-        CUDA_CHECK(cudaEventRecord(event, s));
-        CUDA_CHECK(cudaStreamWaitEvent(NULL, event, 0));
-        CUDA_CHECK(cudaEventRecord(event, c1));
-        CUDA_CHECK(cudaStreamWaitEvent(NULL, event, 0));
-        CUDA_CHECK(cudaEventRecord(event, c2));
-        CUDA_CHECK(cudaStreamWaitEvent(NULL, event, 0));
+        CUDA_CHECK(cudaEventRecord(event, ctx->s));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->stream, event, 0));
+        CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->stream, event, 0));
+        CUDA_CHECK(cudaEventRecord(event, ctx->c2));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->stream, event, 0));
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Waiting");
 }
 
 Communicator::~Communicator() {
@@ -195,9 +191,6 @@ Communicator::~Communicator() {
   if (UseMPI == true) MPICHECK(MPI_Finalize());
   CUDA_CHECK(cudaFree(fusedSendBuff));
   CUDA_CHECK(cudaFree(fusedRecvBuff));
-  CUDA_CHECK(cudaStreamDestroy(s));
-  CUDA_CHECK(cudaStreamDestroy(c1));
-  CUDA_CHECK(cudaStreamDestroy(c2));
 
   if (halfInitialized == true) {
     CUDA_CHECK(cudaFree(fusedSendBuffHalf));
@@ -221,52 +214,90 @@ void Communicator::fusedSynch(vector<Tensor> &t, bool send) {
 
   generateBlocks(t);
 
+  if (t[0].data_type() == kFloat16) {
+    ncclType = ncclHalf;
+    dataSize = sizeof(__half);
+  } else {
+    ncclType = ncclFloat;
+    dataSize = sizeof(float);
+  }
+
   if (!send) {
     // buffer the tensors
     device_->Exec(
         [this, t](Context *ctx) mutable {
           // record the event of the default cuda stream and follow it
-          CUDA_CHECK(cudaEventRecord(event, NULL));
-          CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
+          CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
+        },
+        prev_blocks_, prev_blocks_, "Waiting");
 
+    device_->Exec(
+        [this, t](Context *ctx) mutable {
           // memory copy to fusedBuff
           for (size_t i = 0; i < t.size(); i++) {
+            if (t[0].data_type() == kFloat16) {
+              offsetPointer = (void *)(static_cast<__half *>(fusedSendBuff) +
+                                       sendBuffOffset);
+            } else {
+              offsetPointer = (void *)(static_cast<float *>(fusedSendBuff) +
+                                       sendBuffOffset);
+            }
             CUDA_CHECK(cudaMemcpyAsync(
-                (void *)(fusedSendBuff + sendBuffOffset),
+                (void *)offsetPointer,
                 (const void *)t[i].block()->mutable_data(),
-                t[i].Size() * sizeof(float), cudaMemcpyDeviceToDevice, c1));
+                t[i].Size() * dataSize, cudaMemcpyDeviceToDevice, ctx->c1));
             sendBuffOffset += t[i].Size();
           }
         },
-        prev_blocks_, blocks_);
+        prev_blocks_, blocks_, "Dist_c1_fusedSynch_filling");
+
   } else {
     // send the tensors in the buffer
     device_->Exec(
-        [this, t](Context *ctx) mutable {
+        [this](Context *ctx) mutable {
           // wait for the memcpy to complete
-          CUDA_CHECK(cudaEventRecord(event, c1));
-          CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
+          CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
+        },
+        prev_blocks_, prev_blocks_, "Waiting");
 
-          allReduce((int)sendBuffOffset, (void *)fusedSendBuff,
-                    (void *)fusedRecvBuff, ncclFloat);
-
+    device_->Exec(
+        [this](Context *ctx) mutable {
+          allReduce((int)sendBuffOffset, fusedSendBuff, fusedRecvBuff, ncclType,
+                    ctx);
           sendBuffOffset = 0;
+        },
+        prev_blocks_, blocks_, "Dist_s_fusedSynch_allreduce");
 
+    device_->Exec(
+        [this](Context *ctx) mutable {
           // wait for the allreduce to complete
-          CUDA_CHECK(cudaEventRecord(event, s));
-          CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
+          CUDA_CHECK(cudaEventRecord(event, ctx->s));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
+        },
+        blocks_, blocks_, "Waiting");
 
+    device_->Exec(
+        [this, t](Context *ctx) mutable {
           // copy data back to tensors after allreduce
           size_t offset = 0;
           for (size_t i = 0; i < t.size(); i++) {
+            if (t[0].data_type() == kFloat16) {
+              offsetPointer =
+                  (void *)(static_cast<__half *>(fusedRecvBuff) + offset);
+            } else {
+              offsetPointer =
+                  (void *)(static_cast<float *>(fusedRecvBuff) + offset);
+            }
             CUDA_CHECK(cudaMemcpyAsync((void *)t[i].block()->mutable_data(),
-                                       (const void *)(fusedRecvBuff + offset),
-                                       t[i].Size() * sizeof(float),
-                                       cudaMemcpyDeviceToDevice, c1));
+                                       (const void *)offsetPointer,
+                                       t[i].Size() * dataSize,
+                                       cudaMemcpyDeviceToDevice, ctx->c1));
             offset += t[i].Size();
           }
         },
-        blocks_, blocks_);
+        blocks_, blocks_, "Dist_c1_fusedSynch_copyBackToTensor");
   }
 }
 
@@ -274,19 +305,33 @@ void Communicator::synch(Tensor &t) {
   // generateBlocks(t);
   device_ = t.device();
 
+  if (t.data_type() == kFloat16)
+    ncclType = ncclHalf;
+  else
+    ncclType = ncclFloat;
+
   device_->Exec(
       [this, t](Context *ctx) mutable {
         // record the event of the default cuda stream and follow it
-        CUDA_CHECK(cudaEventRecord(event, NULL));
-        CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
-
-        void *addr = t.block()->mutable_data();
-        allReduce(t.Size(), addr, addr, ncclFloat);
+        CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
       },
-      {t.block()}, {t.block()});
-}
+      {t.block()}, {t.block()}, "Waiting");
+
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        void *addr = t.block()->mutable_data();
+        allReduce(t.Size(), addr, addr, ncclType, ctx);
+      },
+      {t.block()}, {t.block()}, "Dist_s_synch_allreduce");
+
+}  // namespace singa
 
 void Communicator::fusedSynchHalf(vector<Tensor> &t, bool send) {
+  CHECK_EQ(t[0].data_type(), kFloat32)
+      << "This function is only available for input tensor precision 32 bit, "
+         "which are converted into 16 bits before transmit";
+
   CHECK_GT(t.size(), 0);
 
   generateBlocks(t);
@@ -296,89 +341,129 @@ void Communicator::fusedSynchHalf(vector<Tensor> &t, bool send) {
   if (!send) {
     // buffer the tensors and convert them into half
     device_->Exec(
-        [this, t](Context *ctx) mutable {
+        [this](Context *ctx) mutable {
           // record the event of the default cuda stream and follow it
-          CUDA_CHECK(cudaEventRecord(event, NULL));
-          CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
-
+          CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
+        },
+        prev_blocks_, prev_blocks_, "Waiting");
+    device_->Exec(
+        [this, t](Context *ctx) mutable {
           size_t offset = 0;
           // memory copy to fusedBuff
           for (size_t i = 0; i < t.size(); i++) {
             CUDA_CHECK(cudaMemcpyAsync(
-                (void *)(fusedSendBuff + sendBuffOffset),
+                (void *)(static_cast<float *>(fusedSendBuff) + sendBuffOffset),
                 (const void *)t[i].block()->mutable_data(),
-                t[i].Size() * sizeof(float), cudaMemcpyDeviceToDevice, c1));
+                t[i].Size() * sizeof(float), cudaMemcpyDeviceToDevice,
+                ctx->c1));
             sendBuffOffset += t[i].Size();
             offset += t[i].Size();
           }
         },
-        prev_blocks_, blocks_);
+        prev_blocks_, blocks_, "Dist_c1_fusedSynchHalf_filling");
   } else {
     // send the tensors in the buffer
     device_->Exec(
-        [this, t](Context *ctx) mutable {
-          cuda::float2half(sendBuffOffset, fusedSendBuff, fusedSendBuffHalf,
-                           c1);
-
+        [this](Context *ctx) mutable {
+          cuda::float2half(sendBuffOffset, static_cast<float *>(fusedSendBuff),
+                           static_cast<__half *>(fusedSendBuffHalf), ctx->c1);
+        },
+        prev_blocks_, blocks_, "Dist_c1_fusedSynchHalf_float2half");
+    device_->Exec(
+        [this](Context *ctx) mutable {
           // wait for the memcpy to complete
-          CUDA_CHECK(cudaEventRecord(event, c1));
-          CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
-
-          allReduce((int)sendBuffOffset, (void *)fusedSendBuffHalf,
-                    (void *)fusedRecvBuffHalf, ncclHalf);
-
+          CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
+        },
+        blocks_, blocks_, "Waiting");
+    device_->Exec(
+        [this](Context *ctx) mutable {
+          allReduce((int)sendBuffOffset, fusedSendBuffHalf, fusedRecvBuffHalf,
+                    ncclHalf, ctx);
+        },
+        blocks_, blocks_, "Dist_s_fusedSynchHalf_allreduce");
+    device_->Exec(
+        [this](Context *ctx) mutable {
           // wait for the allreduce to complete
-          CUDA_CHECK(cudaEventRecord(event, s));
-          CUDA_CHECK(cudaStreamWaitEvent(c2, event, 0));
-
-          cuda::half2float(sendBuffOffset, fusedRecvBuffHalf, fusedRecvBuff,
-                           c2);
+          CUDA_CHECK(cudaEventRecord(event, ctx->s));
+          CUDA_CHECK(cudaStreamWaitEvent(ctx->c2, event, 0));
+        },
+        blocks_, blocks_, "Waiting");
+    device_->Exec(
+        [this, t](Context *ctx) mutable {
+          cuda::half2float(sendBuffOffset,
+                           static_cast<__half *>(fusedRecvBuffHalf),
+                           static_cast<float *>(fusedRecvBuff), ctx->c2);
 
           sendBuffOffset = 0;
 
           // copy data back to tensors after allreduce
           size_t offset = 0;
           for (size_t i = 0; i < t.size(); i++) {
-            CUDA_CHECK(cudaMemcpyAsync((void *)t[i].block()->mutable_data(),
-                                       (const void *)(fusedRecvBuff + offset),
-                                       t[i].Size() * sizeof(float),
-                                       cudaMemcpyDeviceToDevice, c2));
+            CUDA_CHECK(cudaMemcpyAsync(
+                (void *)t[i].block()->mutable_data(),
+                (const void *)(static_cast<float *>(fusedRecvBuff) + offset),
+                t[i].Size() * sizeof(float), cudaMemcpyDeviceToDevice,
+                ctx->c2));
             offset += t[i].Size();
           }
         },
-        blocks_, blocks_);
+        blocks_, blocks_, "Dist_c2_fusedSynchHalf_half2floatcopy");
   }
 }
 
 void Communicator::synchHalf(Tensor &t) {
+  // tensor precision is 32 bit, convert to 16 bit before transmit
+  CHECK_EQ(t.data_type(), kFloat32)
+      << "This function is only available for input tensor precision 32 bit, "
+         "which are converted into 16 bits before transmit";
+
   generateBlocks(t);
 
   if (halfInitialized == false) halfInit();
 
   device_->Exec(
       [this, t](Context *ctx) mutable {
-        float *addr = static_cast<float *>(t.block()->mutable_data());
-
         // record the event of the default cuda stream and follow it
-        CUDA_CHECK(cudaEventRecord(event, NULL));
-        CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
-
-        cuda::float2half(t.Size(), addr, fusedSendBuffHalf, c1);
-
-        // wait for conversion to half precision complete
-        CUDA_CHECK(cudaEventRecord(event, c1));
-        CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
-
-        allReduce(t.Size(), (void *)fusedSendBuffHalf,
-                  (void *)fusedRecvBuffHalf, ncclHalf);
-
-        // wait for the allreduce to complete
-        CUDA_CHECK(cudaEventRecord(event, s));
-        CUDA_CHECK(cudaStreamWaitEvent(c2, event, 0));
-
-        cuda::half2float(t.Size(), fusedRecvBuffHalf, addr, c2);
+        CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Waiting");
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        float *addr = static_cast<float *>(t.block()->mutable_data());
+        cuda::float2half(t.Size(), addr,
+                         static_cast<__half *>(fusedSendBuffHalf), ctx->c1);
+      },
+      blocks_, blocks_, "Dist_c1_synchHalf_float2half");
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        // wait for conversion to half precision complete
+        CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
+      },
+      blocks_, blocks_, "Waiting");
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        allReduce(t.Size(), fusedSendBuffHalf, fusedRecvBuffHalf, ncclHalf,
+                  ctx);
+      },
+      blocks_, blocks_, "Dist_s_synchHalf_allreduce");
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        // wait for the allreduce to complete
+        CUDA_CHECK(cudaEventRecord(event, ctx->s));
+        CUDA_CHECK(cudaStreamWaitEvent(ctx->c2, event, 0));
+      },
+      blocks_, blocks_, "Waiting");
+  device_->Exec(
+      [this, t](Context *ctx) mutable {
+        float *addr = static_cast<float *>(t.block()->mutable_data());
+        cuda::half2float(t.Size(), static_cast<__half *>(fusedRecvBuffHalf),
+                         addr, ctx->c2);
+      },
+      blocks_, blocks_, "Dist_c2_synchHalf_half2float");
 }
 
 void Communicator::sparsification(Tensor &t, Tensor &accumulation,
@@ -388,9 +473,9 @@ void Communicator::sparsification(Tensor &t, Tensor &accumulation,
 
   device_->Exec(
       [=](Context *ctx) mutable {
-        _sparsification(t, &accumulation, sparsThreshold, topK);
+        _sparsification(t, &accumulation, sparsThreshold, topK, ctx);
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Dist_c1c2_sparsification");
 }
 
 void Communicator::sparsification(Tensor &t, float sparsThreshold, bool topK) {
@@ -398,41 +483,50 @@ void Communicator::sparsification(Tensor &t, float sparsThreshold, bool topK) {
 
   t.device()->Exec(
       [=](Context *ctx) mutable {
-        _sparsification(t, (Tensor *)NULL, sparsThreshold, topK);
+        _sparsification(t, (Tensor *)NULL, sparsThreshold, topK, ctx);
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Dist_c1c2_sparsification");
 }
 
 void Communicator::_sparsification(Tensor &t, Tensor *accumulation,
-                                   float sparsThreshold, bool topK) {
+                                   float sparsThreshold, bool topK,
+                                   Context *ctx) {
+  if (t.data_type() == kFloat16) {
+    ncclType = ncclHalf;
+    dataSize = sizeof(__half);
+  } else {
+    ncclType = ncclFloat;
+    dataSize = sizeof(float);
+  }
+
   // threshold for sprasification
   threshold = sparsThreshold;
 
   // record the event of the default cuda stream and follow it
-  CUDA_CHECK(cudaEventRecord(event, NULL));
-  CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
 
   // memory copy to fusedBuff
   CUDA_CHECK(cudaMemcpyAsync(
-      (void *)fusedSendBuff, (const void *)t.block()->mutable_data(),
-      t.Size() * sizeof(float), cudaMemcpyDeviceToDevice, c1));
+      fusedSendBuff, (const void *)t.block()->mutable_data(),
+      t.Size() * sizeof(float), cudaMemcpyDeviceToDevice, ctx->c1));
 
-  float *accumPtr;
+  void *accumPtr;
 
   if (accumulation != NULL)
-    accumPtr = (float *)accumulation->block()->mutable_data();
+    accumPtr = accumulation->block()->mutable_data();
   else
     accumPtr = NULL;
 
   if (topK == false)
-    valSparsAllReduce(t.Size(), accumPtr);
+    valSparsAllReduce(t.Size(), accumPtr, ctx);
   else
-    topKSparsAllReduce(t.Size(), accumPtr);
+    topKSparsAllReduce(t.Size(), accumPtr, ctx);
 
   // copy data back to tensor after allreduce
-  CUDA_CHECK(cudaMemcpyAsync(
-      (void *)t.block()->mutable_data(), (const void *)fusedRecvBuff,
-      t.Size() * sizeof(float), cudaMemcpyDeviceToDevice, c2));
+  CUDA_CHECK(cudaMemcpyAsync((void *)t.block()->mutable_data(),
+                             (const void *)fusedRecvBuff, t.Size() * dataSize,
+                             cudaMemcpyDeviceToDevice, ctx->c2));
 }
 
 void Communicator::fusedSparsification(vector<Tensor> &t, Tensor &accumulation,
@@ -444,9 +538,9 @@ void Communicator::fusedSparsification(vector<Tensor> &t, Tensor &accumulation,
 
   device_->Exec(
       [=](Context *ctx) mutable {
-        _fusedSparsification(t, &accumulation, sparsThreshold, topK);
+        _fusedSparsification(t, &accumulation, sparsThreshold, topK, ctx);
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Dist_c1c2_fusedSparsification");
 }
 
 void Communicator::fusedSparsification(vector<Tensor> &t, float sparsThreshold,
@@ -457,157 +551,196 @@ void Communicator::fusedSparsification(vector<Tensor> &t, float sparsThreshold,
 
   device_->Exec(
       [=](Context *ctx) mutable {
-        _fusedSparsification(t, (Tensor *)NULL, sparsThreshold, topK);
+        _fusedSparsification(t, (Tensor *)NULL, sparsThreshold, topK, ctx);
       },
-      blocks_, blocks_);
+      blocks_, blocks_, "Dist_c1c2_fusedSparsification");
 }
 
 void Communicator::_fusedSparsification(vector<Tensor> &t, Tensor *accumulation,
-                                        float sparsThreshold, bool topK) {
+                                        float sparsThreshold, bool topK,
+                                        Context *ctx) {
+  if (t[0].data_type() == kFloat16) {
+    ncclType = ncclHalf;
+    dataSize = sizeof(__half);
+  } else {
+    ncclType = ncclFloat;
+    dataSize = sizeof(float);
+  }
+
   // threshold for sprasification
   threshold = sparsThreshold;
 
   // record the event of the default cuda stream and follow it
-  CUDA_CHECK(cudaEventRecord(event, NULL));
-  CUDA_CHECK(cudaStreamWaitEvent(c1, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->stream));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->c1, event, 0));
 
   size_t offset = 0;
 
   // memory copy to fusedBuff
   for (size_t i = 0; i < t.size(); i++) {
-    CUDA_CHECK(cudaMemcpyAsync((void *)(fusedSendBuff + offset),
-                               (const void *)t[i].block()->mutable_data(),
-                               t[i].Size() * sizeof(float),
-                               cudaMemcpyDeviceToDevice, c1));
+    if (t[0].data_type() == kFloat16) {
+      offsetPointer = (void *)(static_cast<__half *>(fusedSendBuff) + offset);
+    } else {
+      offsetPointer = (void *)(static_cast<float *>(fusedSendBuff) + offset);
+    }
+    CUDA_CHECK(cudaMemcpyAsync(
+        offsetPointer, (const void *)t[i].block()->mutable_data(),
+        t[i].Size() * dataSize, cudaMemcpyDeviceToDevice, ctx->c1));
     offset += t[i].Size();
   }
 
-  float *accumPtr;
+  void *accumPtr;
 
   if (accumulation != NULL)
-    accumPtr = (float *)accumulation->block()->mutable_data();
+    accumPtr = accumulation->block()->mutable_data();
   else
     accumPtr = NULL;
 
   if (topK == false)
-    valSparsAllReduce(offset, accumPtr);
+    valSparsAllReduce(offset, accumPtr, ctx);
   else
-    topKSparsAllReduce(offset, accumPtr);
+    topKSparsAllReduce(offset, accumPtr, ctx);
 
   // copy data back to tensors after allreduce
   offset = 0;
   for (size_t i = 0; i < t.size(); i++) {
-    CUDA_CHECK(cudaMemcpyAsync((void *)t[i].block()->mutable_data(),
-                               (const void *)(fusedRecvBuff + offset),
-                               t[i].Size() * sizeof(float),
-                               cudaMemcpyDeviceToDevice, c2));
+    if (t[0].data_type() == kFloat16) {
+      offsetPointer = (void *)(static_cast<__half *>(fusedRecvBuff) + offset);
+    } else {
+      offsetPointer = (void *)(static_cast<float *>(fusedRecvBuff) + offset);
+    }
+    CUDA_CHECK(cudaMemcpyAsync(
+        (void *)t[i].block()->mutable_data(), (const void *)(offsetPointer),
+        t[i].Size() * dataSize, cudaMemcpyDeviceToDevice, ctx->c2));
     offset += t[i].Size();
   }
 }
 
-void Communicator::valSparsAllReduce(size_t num, float *accumulation) {
+void Communicator::valSparsAllReduce(size_t num, void *accumulation,
+                                     Context *ctx) {
+  CHECK_EQ(dataSize, sizeof(float))
+      << "This function depends on thrust and support only fp32 currently";
+
   if (sparsInitialized == false) sparsInit();
 
   if (accumulation != NULL) {
     // add the previous accumulation
-    cuda::add(num, fusedSendBuff, accumulation, fusedSendBuff, c1);
+    cuda::add(num, static_cast<float *>(fusedSendBuff),
+              static_cast<float *>(accumulation),
+              static_cast<float *>(fusedSendBuff), ctx->c1);
     // backup the fusedSendBuff
-    CUDA_CHECK(cudaMemcpyAsync((void *)backupBuff, (const void *)fusedSendBuff,
+    CUDA_CHECK(cudaMemcpyAsync(backupBuff, (const void *)fusedSendBuff,
                                sizeof(float) * num, cudaMemcpyDeviceToDevice,
-                               c1));
+                               ctx->c1));
   }
 
   // sparsification based on threshold
-  cuda::sparsabs(num, threshold, fusedSendBuff, fusedSendBuff, c1);
+  cuda::sparsabs(num, threshold, static_cast<float *>(fusedSendBuff),
+                 static_cast<float *>(fusedSendBuff), ctx->c1);
 
   // output the gradient accumulation
   if (accumulation != NULL)
-    cuda::sub(num, backupBuff, fusedSendBuff, accumulation, c1);
+    cuda::sub(num, static_cast<float *>(backupBuff),
+              static_cast<float *>(fusedSendBuff),
+              static_cast<float *>(accumulation), ctx->c1);
 
   // produce the index of the sparse array
-  cuda::sparsindex(num, fusedSendBuff, fusedIndex, c1);
+  cuda::sparsindex(num, static_cast<float *>(fusedSendBuff), fusedIndex,
+                   ctx->c1);
 
   // remove zero of index to become sprase array and get the num of non-zero nnz
-  cuda::removezeroidx(num, fusedIndex, c1, nnz);
+  cuda::removezeroidx(num, fusedIndex, ctx->c1, nnz);
 
   CUDA_CHECK(cudaMemcpyAsync((void *)nnzGPU, (const void *)nnz, sizeof(int),
-                             cudaMemcpyHostToDevice, c1));
+                             cudaMemcpyHostToDevice, ctx->c1));
 
   // all-gather all the nnz from different ranks
   NCCLCHECK(ncclAllGather((const void *)nnzGPU, (void *)nnzAllGPU, 1, ncclInt,
-                          comm, c1));
+                          comm, ctx->c1));
 
   CUDA_CHECK(cudaMemcpyAsync((void *)nnzAll, (const void *)nnzAllGPU,
                              sizeof(int) * world_size, cudaMemcpyDeviceToHost,
-                             c1));
+                             ctx->c1));
 
-  CUDA_CHECK(cudaStreamSynchronize(c1));
+  CUDA_CHECK(cudaStreamSynchronize(ctx->c1));
 
   int nnzMax = 0;
   for (int i = 0; i < world_size; i++)
     if (nnzAll[i] > nnzMax) nnzMax = nnzAll[i];
 
   // remove zero of values to become sprase array
-  cuda::removezeroval(num, fusedSendBuff, c1);
+  cuda::removezeroval(num, static_cast<float *>(fusedSendBuff), ctx->c1);
 
-  CUDA_CHECK(cudaMemcpyAsync((void *)(sparsSendBuff), (const void *)fusedIndex,
+  CUDA_CHECK(cudaMemcpyAsync(sparsSendBuff, (const void *)fusedIndex,
                              sizeof(int) * (*nnz), cudaMemcpyDeviceToDevice,
-                             c1));
-  CUDA_CHECK(cudaMemcpyAsync(
-      (void *)(sparsSendBuff + (*nnz)), (const void *)fusedSendBuff,
-      sizeof(float) * (*nnz), cudaMemcpyDeviceToDevice, c1));
+                             ctx->c1));
+  CUDA_CHECK(
+      cudaMemcpyAsync((void *)(static_cast<float *>(sparsSendBuff) + (*nnz)),
+                      (const void *)fusedSendBuff, sizeof(float) * (*nnz),
+                      cudaMemcpyDeviceToDevice, ctx->c1));
 
   // wait for the memcpy to complete
-  CUDA_CHECK(cudaEventRecord(event, c1));
-  CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
 
   // all-gather all the sparse gradients
-  NCCLCHECK(ncclAllGather((const void *)sparsSendBuff, (void *)sparsRecvBuff,
-                          2 * nnzMax, ncclFloat, comm, s));
+  NCCLCHECK(ncclAllGather((const void *)sparsSendBuff, sparsRecvBuff,
+                          2 * nnzMax, ncclFloat, comm, ctx->s));
 
   // wait for the all-gather to complete
-  CUDA_CHECK(cudaEventRecord(event, s));
-  CUDA_CHECK(cudaStreamWaitEvent(c2, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->s));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->c2, event, 0));
 
   // reduce the sparse gradients, firstly setting the sum buff value to zero
-  CUDA_CHECK(cudaMemsetAsync(fusedRecvBuff, 0, num * sizeof(float), c2));
+  CUDA_CHECK(cudaMemsetAsync(fusedRecvBuff, 0, num * sizeof(float), ctx->c2));
 
   size_t offset = 0;
   float alpha = 1.0;
 
   // add the spase gradent from each rank to the sum buff to finish the
   // all-reduce process
+  CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, ctx->c2));
+
   for (int i = 0; i < world_size; i++) {
-    CUDA_CHECK(
-        cudaMemcpyAsync((void *)xInd, (const void *)(sparsRecvBuff + offset),
-                        sizeof(int) * nnzAll[i], cudaMemcpyDeviceToDevice, c2));
+    CUDA_CHECK(cudaMemcpyAsync(
+        (void *)xInd,
+        (const void *)(static_cast<float *>(sparsRecvBuff) + offset),
+        sizeof(int) * nnzAll[i], cudaMemcpyDeviceToDevice, ctx->c2));
     offset += nnzAll[i];
     CUDA_CHECK(cudaMemcpyAsync(
-        (void *)xVal, (const void *)(sparsRecvBuff + offset),
-        sizeof(float) * nnzAll[i], cudaMemcpyDeviceToDevice, c2));
+        (void *)xVal,
+        (const void *)(static_cast<float *>(sparsRecvBuff) + offset),
+        sizeof(float) * nnzAll[i], cudaMemcpyDeviceToDevice, ctx->c2));
     offset += (2 * nnzMax - nnzAll[i]);
     CUSPARSE_CHECK(cusparseSaxpyi(cusparse_handle, nnzAll[i], &alpha, xVal,
-                                  xInd, fusedRecvBuff,
+                                  xInd, static_cast<float *>(fusedRecvBuff),
                                   CUSPARSE_INDEX_BASE_ONE));
   }
 }
 
-void Communicator::topKSparsAllReduce(size_t num, float *accumulation) {
+void Communicator::topKSparsAllReduce(size_t num, void *accumulation,
+                                      Context *ctx) {
+  CHECK_EQ(dataSize, sizeof(float))
+      << "This function depends on thrust and support only fp32 currently";
+
   if (sparsInitialized == false) sparsInit();
 
   // use gradient accumulation
   if (accumulation != NULL) {
     // add the previous accumulation
-    cuda::add(num, fusedSendBuff, accumulation, fusedSendBuff, c1);
+    cuda::add(num, static_cast<float *>(fusedSendBuff),
+              static_cast<float *>(accumulation),
+              static_cast<float *>(fusedSendBuff), ctx->c1);
     // backup the fusedSendBuff
-    CUDA_CHECK(cudaMemcpyAsync((void *)backupBuff, (const void *)fusedSendBuff,
+    CUDA_CHECK(cudaMemcpyAsync(backupBuff, (const void *)fusedSendBuff,
                                sizeof(float) * num, cudaMemcpyDeviceToDevice,
-                               c1));
+                               ctx->c1));
   }
 
   // generate an index and sort the fusedSendBuff from large to small values
-  cuda::generateindex(num, fusedIndex, c1);
-  cuda::sortbykey(num, fusedSendBuff, fusedIndex, c1);
+  cuda::generateindex(num, fusedIndex, ctx->c1);
+  cuda::sortbykey(num, static_cast<float *>(fusedSendBuff), fusedIndex,
+                  ctx->c1);
 
   // determine the number of topK for communication
   int nnzMax = (int)ceil(threshold * num);
@@ -615,54 +748,61 @@ void Communicator::topKSparsAllReduce(size_t num, float *accumulation) {
   // output the gradient accumulation
   float alpha = 1.0;
   if (accumulation != NULL) {
-    CUDA_CHECK(cudaMemsetAsync(accumulation, 0, num * sizeof(float), c1));
-    CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, c1));
-    CUSPARSE_CHECK(cusparseSaxpyi(cusparse_handle, nnzMax, &alpha,
-                                  fusedSendBuff, fusedIndex, accumulation,
-                                  CUSPARSE_INDEX_BASE_ONE));
-    cuda::sub(num, backupBuff, accumulation, accumulation, c1);
+    CUDA_CHECK(cudaMemsetAsync(accumulation, 0, num * sizeof(float), ctx->c1));
+    CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, ctx->c1));
+    CUSPARSE_CHECK(cusparseSaxpyi(
+        cusparse_handle, nnzMax, &alpha, static_cast<float *>(fusedSendBuff),
+        fusedIndex, static_cast<float *>(accumulation),
+        CUSPARSE_INDEX_BASE_ONE));
+    cuda::sub(num, static_cast<float *>(backupBuff),
+              static_cast<float *>(accumulation),
+              static_cast<float *>(accumulation), ctx->c1);
   }
 
   // the topK value and index will be sent
-  CUDA_CHECK(cudaMemcpyAsync((void *)(sparsSendBuff), (const void *)fusedIndex,
+  CUDA_CHECK(cudaMemcpyAsync(sparsSendBuff, (const void *)fusedIndex,
                              sizeof(int) * nnzMax, cudaMemcpyDeviceToDevice,
-                             c1));
-  CUDA_CHECK(cudaMemcpyAsync(
-      (void *)(sparsSendBuff + nnzMax), (const void *)fusedSendBuff,
-      sizeof(float) * nnzMax, cudaMemcpyDeviceToDevice, c1));
+                             ctx->c1));
+  CUDA_CHECK(
+      cudaMemcpyAsync((void *)(static_cast<float *>(sparsSendBuff) + nnzMax),
+                      (const void *)fusedSendBuff, sizeof(float) * nnzMax,
+                      cudaMemcpyDeviceToDevice, ctx->c1));
 
   // wait for the memcpy to complete
-  CUDA_CHECK(cudaEventRecord(event, c1));
-  CUDA_CHECK(cudaStreamWaitEvent(s, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->c1));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->s, event, 0));
 
   // all-gather all the sparse gradients
   NCCLCHECK(ncclAllGather((const void *)sparsSendBuff, (void *)sparsRecvBuff,
-                          2 * nnzMax, ncclFloat, comm, s));
+                          2 * nnzMax, ncclFloat, comm, ctx->s));
 
   // wait for the all-gather to complete
-  CUDA_CHECK(cudaEventRecord(event, s));
-  CUDA_CHECK(cudaStreamWaitEvent(c2, event, 0));
+  CUDA_CHECK(cudaEventRecord(event, ctx->s));
+  CUDA_CHECK(cudaStreamWaitEvent(ctx->c2, event, 0));
 
   // reduce the sparse gradients, firstly setting the sum buff value to zero
-  CUDA_CHECK(cudaMemsetAsync(fusedRecvBuff, 0, num * sizeof(float), c2));
+  CUDA_CHECK(cudaMemsetAsync(fusedRecvBuff, 0, num * sizeof(float), ctx->c2));
 
   size_t offset = 0;
 
-  CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, c2));
+  CUSPARSE_CHECK(cusparseSetStream(cusparse_handle, ctx->c2));
 
   // add the spase gradent from each rank to the sum buff to finish the
   // all-reduce process
   for (int i = 0; i < world_size; i++) {
-    CUDA_CHECK(
-        cudaMemcpyAsync((void *)xInd, (const void *)(sparsRecvBuff + offset),
-                        sizeof(int) * nnzMax, cudaMemcpyDeviceToDevice, c2));
+    CUDA_CHECK(cudaMemcpyAsync(
+        (void *)xInd,
+        (const void *)(static_cast<float *>(sparsRecvBuff) + offset),
+        sizeof(int) * nnzMax, cudaMemcpyDeviceToDevice, ctx->c2));
     offset += nnzMax;
-    CUDA_CHECK(
-        cudaMemcpyAsync((void *)xVal, (const void *)(sparsRecvBuff + offset),
-                        sizeof(float) * nnzMax, cudaMemcpyDeviceToDevice, c2));
+    CUDA_CHECK(cudaMemcpyAsync(
+        (void *)xVal,
+        (const void *)(static_cast<float *>(sparsRecvBuff) + offset),
+        sizeof(float) * nnzMax, cudaMemcpyDeviceToDevice, ctx->c2));
     offset += nnzMax;
     CUSPARSE_CHECK(cusparseSaxpyi(cusparse_handle, nnzMax, &alpha, xVal, xInd,
-                                  fusedRecvBuff, CUSPARSE_INDEX_BASE_ONE));
+                                  static_cast<float *>(fusedRecvBuff),
+                                  CUSPARSE_INDEX_BASE_ONE));
   }
 }
 }  // namespace singa

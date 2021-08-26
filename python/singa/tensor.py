@@ -59,13 +59,14 @@ from deprecated import deprecated
 from builtins import object
 import numpy as np
 from functools import reduce
+import re
 
-from .proto import core_pb2
 from . import singa_wrap as singa
 from .device import get_default_device
 
-int32 = core_pb2.kInt
-float32 = core_pb2.kFloat32
+int32 = 2  #core.proto.kInt32
+float16 = 1  #core.proto.kFloat16
+float32 = 0  #core.proto.kFloat32
 CTensor = singa.Tensor
 
 
@@ -155,6 +156,17 @@ class Tensor(object):
 
         return ret
 
+    def is_dummy(self):
+        '''
+        Returns:
+            True if the tensor is a dummy tensor
+        '''
+        match = re.match(r'Dummy#\d+', self.name)
+        if match:
+            return True
+        else:
+            return False
+
     def ndim(self):
         '''
         Returns:
@@ -212,6 +224,11 @@ class Tensor(object):
         '''
         return self.data.MemSize()
 
+    def contiguous(self):
+        t = Tensor(self.shape, self.device, self.dtype)
+        t.data = singa.Contiguous(self.data)
+        return t
+
     def reshape(self, shape):
         '''Return a new tensor with the given shape, and the original
             tensor is not changed.
@@ -252,6 +269,8 @@ class Tensor(object):
         '''
         if dtype == singa.kInt:
             pass
+        elif dtype == singa.kFloat16:
+            pass
         elif dtype == singa.kFloat32:
             pass
         elif dtype == 'int':
@@ -263,6 +282,32 @@ class Tensor(object):
         t = Tensor(self.shape, self.device, dtype)
         t.data = self.data.AsType(dtype)
         return t
+
+    def to_type(self, dtype):
+        '''Change the data type inplace.
+
+        Args:
+            dtype: accepts 'int', 'float', 'singa.kFloat32', 'singa.kInt'
+
+        Returns:
+            new tensor with new type
+        '''
+        assert self.data.initialized()
+        if dtype == singa.kInt:
+            pass
+        elif dtype == singa.kFloat32:
+            pass
+        elif dtype == singa.kFloat16:
+            pass
+        elif dtype == 'int':
+            dtype = singa.kInt
+        elif dtype == 'float':
+            dtype = singa.kFloat32
+        else:
+            raise TypeError("invalid data type %s" % dtype)
+        self.data.ToType(dtype)
+        self.dtype = dtype
+        return self
 
     def to_device(self, device):
         '''Move the tensor data onto a given device.
@@ -325,10 +370,12 @@ class Tensor(object):
         dt = np_array.dtype
         if dt == np.float32:
             self.data.CopyFloatDataFromHostPtr(np_array)
+        elif dt == np.float16:
+            self.data.CopyHalfFloatDataFromHostPtr(np_array)
         elif dt == np.int or dt == np.int32:
             self.data.CopyIntDataFromHostPtr(np_array)
         else:
-            print('Not implemented yet for ', dt)
+            raise NotImplementedError('Not implemented yet for ', dt)
 
     def copy_data(self, t):
         '''Copy data from other Tensor instance.
@@ -336,8 +383,23 @@ class Tensor(object):
         Args:
             t (Tensor): source Tensor.
         '''
+        assert (t.size() == self.size()), "tensor shape should be the same"
         assert isinstance(t, Tensor), 't must be a singa Tensor instance'
         self.data.CopyData(t.data)
+
+    def copy_from(self, t, offset=0):
+        ''' Copy the data from the numpy array or other Tensor instance
+
+        Args:
+            t (Tensor or np array): source Tensor or numpy array
+            offset (int): destination offset
+        '''
+        if isinstance(t, Tensor):
+            self.copy_data(t)
+        elif isinstance(t, np.ndarray):
+            self.copy_from_numpy(t)
+        else:
+            raise ValueError("t should be Tensor or numpy array.")
 
     def clone(self):
         '''
@@ -612,56 +674,65 @@ class Tensor(object):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__add__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.AddFloat, self.data, rhs)
-
+            return _call_singa_func(singa.AddFloat, self.data, float(rhs))
+            
     def __sub__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__sub__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.SubFloat, self.data, rhs)
-
+            return _call_singa_func(singa.SubFloat, self.data, float(rhs))
+            
     def __mul__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__mul__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.MultFloat, self.data, rhs)
-
+            return _call_singa_func(singa.MultFloat, self.data, float(rhs))
+            
     def __div__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__div__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.DivFloat, self.data, rhs)
-
+            return _call_singa_func(singa.DivFloat, self.data, float(rhs))
+            
     def __truediv__(self, rhs):
-        if isinstance(rhs, Tensor):
-            return from_raw_tensor(singa.__div__(self.data, rhs.data))
-        else:
-            return _call_singa_func(singa.DivFloat, self.data, rhs)
+        return self.__div__(rhs)
+    
+    def __floordiv__(self, rhs):
+        tmp = self.__div__(rhs)
+        return _call_singa_func(singa.Floor, tmp.data)
 
     def __lt__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__lt__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.LTFloat, self.data, rhs)
-
+            return _call_singa_func(singa.LTFloat, self.data, float(rhs))
+            
     def __le__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__le__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.LEFloat, self.data, rhs)
-
+            return _call_singa_func(singa.LEFloat, self.data, float(rhs))
+            
     def __gt__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__gt__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.GTFloat, self.data, rhs)
-
+            return _call_singa_func(singa.GTFloat, self.data, float(rhs))
+            
     def __ge__(self, rhs):
         if isinstance(rhs, Tensor):
             return from_raw_tensor(singa.__ge__(self.data, rhs.data))
         else:
-            return _call_singa_func(singa.GEFloat, self.data, rhs)
-
+            return _call_singa_func(singa.GEFloat, self.data, float(rhs))
+            
+    def __eq__(self, rhs):
+        if isinstance(rhs, Tensor):
+            return from_raw_tensor(singa.__eq__(self.data, rhs.data))
+        elif rhs is None:
+            return False
+        else:
+            return _call_singa_func(singa.EQFloat, self.data, float(rhs))
+            
     def __radd__(self, lhs):
         lhs = float(lhs)
         one = Tensor(self.shape, self.device, self.dtype)
@@ -697,10 +768,20 @@ class Tensor(object):
         one /= self
         return one
 
+    dtype_name = {
+        float16: "float16",
+        float32: "float32",
+        int32: "int32",
+    }
+
     def __repr__(self):
-        return np.array2string(to_numpy(self))
+        return "%s, %s" % (np.array2string(
+            to_numpy(self)), self.dtype_name[self.dtype])
 
 
+''' alias Tensor to PlaceHolder
+'''
+PlaceHolder = Tensor
 ''' python functions for global functions in Tensor.h
 '''
 
@@ -746,6 +827,10 @@ def sizeof(dtype):
     return singa.SizeOf(dtype)
 
 
+def contiguous(tensor):
+    return _call_singa_func(singa.Contiguous, tensor.data)
+
+
 def reshape(tensor, shape):
     '''Reshape the input tensor with the given shape and
     the original tensor is not changed
@@ -789,7 +874,7 @@ def copy_data_to_from(dst, src, size, dst_offset=0, src_offset=0):
     singa.CopyDataToFrom(dst.data, src.data, size, dst_offset, src_offset)
 
 
-def from_numpy(np_array):
+def from_numpy(np_array, dev=None):
     '''Create a Tensor instance with the shape, dtype and values from the numpy
     array.
 
@@ -808,13 +893,17 @@ def from_numpy(np_array):
         np_array = np_array.astype(np.int32)
 
     if np_array.dtype == np.float32:
-        dtype = core_pb2.kFloat32
+        dtype = float32
+    elif np_array.dtype == np.float16:
+        dtype = float16
     else:
         assert np_array.dtype == np.int32, \
             'Only float and int tensors are supported'
-        dtype = core_pb2.kInt
+        dtype = int32
     ret = Tensor(np_array.shape, dtype=dtype)
     ret.copy_from_numpy(np_array)
+    if dev:
+        ret.to_device(dev)
     return ret
 
 
@@ -842,9 +931,11 @@ def to_numpy(t):
         a numpy array
     '''
     th = to_host(t)
-    if th.dtype == core_pb2.kFloat32:
+    if th.dtype == float32:
         np_array = th.data.GetFloatValue(int(th.size()))
-    elif th.dtype == core_pb2.kInt:
+    elif th.dtype == float16:
+        np_array = th.data.GetHalfFloatValue(int(th.size()))
+    elif th.dtype == int32:
         np_array = th.data.GetIntValue(int(th.size()))
     else:
         print('Not implemented yet for ', th.dtype)
@@ -1122,6 +1213,20 @@ def ge(t, x):
         or t[i] >= x[i] ? 1.0f:0.0f
     '''
     return t >= x
+
+
+def eq(t, x):
+    '''Elementi-wise comparison for t == x.
+
+    Args:
+        t (Tensor): left hand side operand
+        x (Tensor or float): right hand side operand
+
+    Returns:
+        a Tensor with each element being t[i] == x ? 1.0f:0.0f,
+        or t[i] == x[i] ? 1.0f:0.0f
+    '''
+    return t == x
 
 
 def add(lhs, rhs, ret=None):
@@ -1684,10 +1789,12 @@ def copy_from_numpy(data, np_array):
     dt = np_array.dtype
     if dt == np.float32:
         data.CopyFloatDataFromHostPtr(np_array)
+    elif dt == np.float16:
+        data.CopyHalfFloatDataFromHostPtr(np_array)
     elif dt == np.int or dt == np.int32:
         data.CopyIntDataFromHostPtr(np_array)
     else:
-        print('Not implemented yet for ', dt)
+        raise NotImplementedError('Not implemented yet for ', dt)
 
 
 def concatenate(tensors, axis):
@@ -1705,3 +1812,30 @@ def concatenate(tensors, axis):
     for t in tensors:
         ctensors.append(t.data)
     return _call_singa_func(singa.ConcatOn, ctensors, axis)
+
+
+def random(shape, device=get_default_device()):
+    ''' return a random tensor with given shape
+
+    Args:
+        shape: shape of generated tensor
+        device: device of generated tensor, default is cpu
+
+    Returns:
+        new tensor generated
+    '''
+    ret = Tensor(shape, device=device)
+    ret.uniform(0, 1)
+    return ret
+
+
+def zeros(shape, device=get_default_device()):
+    ret = Tensor(shape, device=device)
+    ret.set_value(0.0)
+    return ret
+
+
+def ones(shape, device=get_default_device()):
+    ret = Tensor(shape, device=device)
+    ret.set_value(1.0)
+    return ret
