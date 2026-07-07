@@ -23,10 +23,10 @@ import numpy as np
 
 import onnx
 import onnx.utils
+import onnxoptimizer
 from onnx.backend.base import Backend, BackendRep
 from onnx import (checker, helper, numpy_helper, GraphProto, NodeProto,
-                  TensorProto, OperatorSetIdProto, optimizer, mapping,
-                  shape_inference)
+                  TensorProto, OperatorSetIdProto, mapping, shape_inference)
 import warnings
 
 from . import device
@@ -57,7 +57,7 @@ NP_TYPE_TO_SINGA_SUPPORT_TYPE = {
     np.dtype('complex128'): None,
     np.dtype('uint32'): None,
     np.dtype('uint64'): None,
-    np.dtype(np.object): None
+    np.dtype(object): None
 }
 
 
@@ -982,7 +982,7 @@ class SingaFrontend(object):
                                                           model_name="sonnx"),
                                   producer_name='sonnx',
                                   opset_imports=[opset_id])
-        model = optimizer.optimize(model)
+        model = onnxoptimizer.optimize(model)
         checker.check_model(model)
         return model
 
