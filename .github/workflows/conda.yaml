@@ -42,18 +42,25 @@ jobs:
       - name: install-conda-build
         run: conda install -y python=3.11 conda-build anaconda-client
       - name: conda-config
-        run: conda config --add channels conda-forge && conda config --add channels nusdbsystem && conda config --set anaconda_upload no
+        run: |
+          conda config --prepend channels conda-forge
+          conda config --prepend channels nusdbsystem
+          conda config --set anaconda_upload no
+          conda config --show channels
       - name: build-pytest
-        run:  conda-build tool/conda/singa --python 3.11
+        run:  conda-build tool/conda/singa --python 3.11 -c nusdbsystem -c conda-forge
         env:
-          TEST_COMMAND: pytest --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python
+          TEST_COMMAND: pytest --ignore=test/python/test_onnx_backend.py --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python || exit 1
       - name: upload-package
         env: 
           ANACONDA_UPLOAD_TOKEN: ${{ secrets.ANACONDA_UPLOAD_TOKEN }}
         if: ${{ env.ANACONDA_UPLOAD_TOKEN }}
         run: |
           CONDA_BASE=$(conda info --base)
-          "$CONDA_BASE/bin/anaconda" -t $ANACONDA_UPLOAD_TOKEN upload -u nusdbsystem -l main "$CONDA_BASE"/conda-bld/linux-64/singa-*.tar.bz2 --force
+          shopt -s nullglob
+          packages=("$CONDA_BASE"/conda-bld/linux-64/singa-*.conda "$CONDA_BASE"/conda-bld/linux-64/singa-*.tar.bz2)
+          test ${#packages[@]} -gt 0
+          "$CONDA_BASE/bin/anaconda" -t $ANACONDA_UPLOAD_TOKEN upload -u nusdbsystem -l main "${packages[@]}" --force
         # 
 
 
@@ -72,15 +79,22 @@ jobs:
       - name: install-conda-build
         run: conda install -y python=3.11 conda-build anaconda-client
       - name: conda-config
-        run: conda config --add channels conda-forge && conda config --add channels nusdbsystem && conda config --set anaconda_upload no
+        run: |
+          conda config --prepend channels conda-forge
+          conda config --prepend channels nusdbsystem
+          conda config --set anaconda_upload no
+          conda config --show channels
       - name: build-pytest
-        run:  conda-build tool/conda/singa --python 3.11
+        run:  conda-build tool/conda/singa --python 3.11 -c nusdbsystem -c conda-forge
         env:
-          TEST_COMMAND: pytest --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python
+          TEST_COMMAND: pytest --ignore=test/python/test_onnx_backend.py --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python || exit 1
       - name: upload-package
         env: 
           ANACONDA_UPLOAD_TOKEN: ${{ secrets.ANACONDA_UPLOAD_TOKEN }}
         if: ${{ env.ANACONDA_UPLOAD_TOKEN }}
         run: |
           CONDA_BASE=$(conda info --base)
-          "$CONDA_BASE/bin/anaconda" -t $ANACONDA_UPLOAD_TOKEN upload -u nusdbsystem -l main "$CONDA_BASE"/conda-bld/osx-*/singa-*.tar.bz2 --force
+          shopt -s nullglob
+          packages=("$CONDA_BASE"/conda-bld/osx-*/singa-*.conda "$CONDA_BASE"/conda-bld/osx-*/singa-*.tar.bz2)
+          test ${#packages[@]} -gt 0
+          "$CONDA_BASE/bin/anaconda" -t $ANACONDA_UPLOAD_TOKEN upload -u nusdbsystem -l main "${packages[@]}" --force

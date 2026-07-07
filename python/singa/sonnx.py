@@ -37,7 +37,7 @@ from . import model
 from . import utils
 from . import singa_wrap as singa
 
-import collections
+import collections.abc
 OrderedDict = collections.OrderedDict
 namedtuple = collections.namedtuple
 
@@ -900,7 +900,7 @@ class SingaFrontend(object):
         else:
             translator = cls._common_singa_tensor_to_onnx_node
         nodes = translator(op, op_t)
-        if not isinstance(nodes, collections.Iterable):
+        if not isinstance(nodes, collections.abc.Iterable):
             nodes = [nodes]
         nodes = [node for node in nodes if node is not None]
         return nodes
@@ -1826,7 +1826,7 @@ class SingaBackend(Backend):
             list, the output
         """
         outputs = operator(*inputs)
-        if not isinstance(outputs, collections.Iterable):
+        if not isinstance(outputs, collections.abc.Iterable):
             outputs = [outputs]
         return outputs
 
@@ -1921,7 +1921,7 @@ class SingaBackend(Backend):
         # optimize and infer the shape of the model
         try:
             model = onnx.utils.polish_model(model)
-        except IndexError as err:
+        except (AttributeError, IndexError):
             model = shape_inference.infer_shapes(model)
 
         # check the opset version and ir version
@@ -2097,6 +2097,23 @@ class SingaRep(BackendRep):
                 self.dev = x[0].device
 
         outputs_dict = OrderedDict([])
+        tensor_dict = self.to_input_tensor(x)
+
+        if not self._layers:
+            for outp in self.outputs:
+                if outp.name in tensor_dict:
+                    val = tensor_dict[outp.name]
+                elif outp.name in self.states:
+                    val = self.states[outp.name]
+                    if self.is_graph:
+                        val = np.atleast_1d(val)
+                        val = tensor.from_numpy(val)
+                        val.to_device(self.dev)
+                else:
+                    raise KeyError(
+                        "Not found the output {} for graph".format(outp.name))
+                outputs_dict[outp.name] = self.to_output_tensor(val, outp.name)
+            return list(outputs_dict.values())
 
         # last_layers means we run this model until the last #N layers
         last_layers = kwargs.get('last_layers', len(self._layers) - 1)
@@ -2113,7 +2130,6 @@ class SingaRep(BackendRep):
         for outp in aux_output:
             outputs_dict[outp] = None
 
-        tensor_dict = self.to_input_tensor(x)
         self.init_tensor_count()
 
         # run the layer by the topo order
