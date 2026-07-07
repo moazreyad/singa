@@ -52,6 +52,7 @@ requirements:
     - numpy >=1.23.5,<2.0
     - pytest
     - deprecated >=1.2.13,<2
+    - dnnl {{ dnnl }}
     - cudnn {{ cudnn }}       # ['cudnn' in str(build_str)]
     - python {{ python }}
     - nccl {{ nccl }}         # ['nccl' in str(build_str)]
@@ -66,6 +67,7 @@ requirements:
     - mpich {{ mpich }}       # ['mpich' in str(build_str)]
     - libprotobuf >=3.21.12,<3.22
     - libopenblas >=0.3.23,<0.4
+    - {{ pin_compatible('dnnl', max_pin='x.x') }}
     - pillow
     - future
     - tqdm
