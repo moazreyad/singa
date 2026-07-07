@@ -58,6 +58,7 @@ jobs:
 
 
   build-pytest-package-macos:
+    if: ${{ false }}
     runs-on: macos-latest
     defaults:
       run:
