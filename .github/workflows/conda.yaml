@@ -44,7 +44,7 @@ jobs:
       - name: conda-config
         run: conda config --add channels conda-forge && conda config --add channels nusdbsystem && conda config --set anaconda_upload no
       - name: build-pytest
-        run:  conda build tool/conda/singa --python 3.11
+        run:  conda-build tool/conda/singa --python 3.11
         env:
           TEST_COMMAND: pytest --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python
       - name: upload-package
@@ -74,7 +74,7 @@ jobs:
       - name: conda-config
         run: conda config --add channels conda-forge && conda config --add channels nusdbsystem && conda config --set anaconda_upload no
       - name: build-pytest
-        run:  conda build tool/conda/singa --python 3.11
+        run:  conda-build tool/conda/singa --python 3.11
         env:
           TEST_COMMAND: pytest --cov=$PREFIX/lib/python3.11/site-packages/singa --cov-report=xml && codecov --flags singa-python
       - name: upload-package
