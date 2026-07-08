@@ -65,7 +65,7 @@ jobs:
 
 
   build-pytest-package-macos:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     defaults:
       run:
         shell: bash -el {0}
